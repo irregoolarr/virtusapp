@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: virtusapp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: virtus
+      POSTGRES_PASSWORD: virtus_dev_pass
+      POSTGRES_DB: virtusapp
+    ports:
+      - "5432:5432"
+    volumes:
+      - virtus_pg_data:/var/lib/postgresql/data
+
+volumes:
+  virtus_pg_data:
