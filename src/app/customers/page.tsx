@@ -3,7 +3,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Building2, Handshake, Mail, MapPin, MoreVertical, Phone, UserCheck } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { HeaderAnalyticsBand } from "@/components/HeaderAnalyticsBand";
+import { DataGrid, GridPage, GridTabs, type GridColumn } from "@/components/grid/DataGrid";
+import { DetailList } from "@/components/grid/DetailPane";
+import { Mono, Pill, SegmentProgress, severityTone, stageRatio } from "@/components/grid/cells";
 import { RecordModal } from "@/components/RecordModal";
 import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
@@ -265,193 +267,136 @@ export default function CustomersPartnersPage() {
   const activePct =
     customers.length > 0 ? Math.round((activeCustomersCount / customers.length) * 100) : 100;
 
+  const deleteCustomer = async (row: CustomerRow | null) => {
+    if (!row || !window.confirm(`Delete ${row.name}?`)) return;
+    const res = await fetch(`/api/customers/${row.id}`, { method: "DELETE" });
+    if (res.ok) {
+      notify("Customer deleted");
+      await Promise.all([loadAll(), refreshLookups()]);
+    } else {
+      notify("Unable to delete customer", "error");
+    }
+  };
+
+  const deletePartner = async (row: PartnerRow | null) => {
+    if (!row || !window.confirm(`Delete ${row.name}?`)) return;
+    const res = await fetch(`/api/partners/${row.id}`, { method: "DELETE" });
+    if (res.ok) {
+      notify("Partner deleted");
+      await Promise.all([loadAll(), refreshLookups()]);
+    } else {
+      notify("Unable to delete partner", "error");
+    }
+  };
+
+  const statusPill = (status: string) => (
+    <Pill tone={status === "Active" ? "normal" : status === "Inactive" || status === "Churned" ? "critical" : "low"}>{status}</Pill>
+  );
+
+  const customerColumns: GridColumn<CustomerRow>[] = [
+    { key: "code", header: "Code", width: 110, render: (r) => <Mono>{r.code}</Mono> },
+    { key: "name", header: "Customer", width: 200 },
+    { key: "industry", header: "Industry", width: 150 },
+    { key: "tier", header: "Tier", width: 110 },
+    { key: "status", header: "Status", width: 130, render: (r) => statusPill(r.status) },
+    { key: "contactName", header: "Contact", width: 160 },
+    { key: "contactEmail", header: "Email", width: 220 },
+    { key: "contactPhone", header: "Phone", width: 150 },
+    { key: "serviceCount", header: "Services", width: 90, align: "right" },
+    { key: "managerName", header: "Account Manager", width: 160 },
+  ];
+
+  const partnerColumns: GridColumn<PartnerRow>[] = [
+    { key: "code", header: "Code", width: 110, render: (r) => <Mono>{r.code}</Mono> },
+    { key: "name", header: "Partner", width: 200 },
+    { key: "partnerType", header: "Type", width: 130 },
+    { key: "tier", header: "Tier", width: 110 },
+    { key: "status", header: "Status", width: 130, render: (r) => statusPill(r.status) },
+    { key: "specialization", header: "Specialization", width: 220, wrap: true },
+    { key: "contactName", header: "Contact", width: 160 },
+    { key: "contactEmail", header: "Email", width: 220 },
+    { key: "escalationEmail", header: "Escalation", width: 220 },
+  ];
+
   return (
     <AppShell>
-      <HeaderAnalyticsBand
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder={
-          tab === "customers"
-            ? "Search customer, industry, contact..."
-            : "Search business partner, specialization..."
-        }
-        onlyMine={tab === "customers" ? onlyMine : undefined}
-        onToggleOnlyMine={tab === "customers" ? () => setOnlyMine((m) => !m) : undefined}
-        ctaLabel={
-          can("customers:write")
-            ? tab === "customers"
-              ? "Add customer"
-              : "Add partner"
-            : undefined
-        }
-        onCtaClick={openCreate}
-        barTitle="Account onboarding"
-        gaugePct={activePct}
-        gaugeLabel="Active customer accounts"
-        kpi1Value={customers.length}
-        kpi1Label="Registered customers"
-        kpi1Href="/services"
-        kpi2Value={partners.length}
-        kpi2Label="Business partners"
-        kpi2Href="/products"
-      />
-
-      <div className="px-6 lg:px-8 py-6 space-y-5">
-        {/* Clean Pill Tab Switcher */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setTab("customers")}
-            className={cn(
-              "inline-flex items-center gap-2 px-4 py-2 rounded-[10px] text-[13px] font-medium border transition-colors",
-              tab === "customers"
-                ? "bg-[#18181A] text-white border-[#18181A]"
-                : "bg-white text-[#525258] border-[#E4E4DC] hover:bg-[#FAF9F5]"
-            )}
-          >
-            <Building2 className="w-4 h-4" />
-            <span>Customers ({filteredCustomers.length})</span>
-          </button>
-          <button
-            onClick={() => setTab("partners")}
-            className={cn(
-              "inline-flex items-center gap-2 px-4 py-2 rounded-[10px] text-[13px] font-medium border transition-colors",
-              tab === "partners"
-                ? "bg-[#18181A] text-white border-[#18181A]"
-                : "bg-white text-[#525258] border-[#E4E4DC] hover:bg-[#FAF9F5]"
-            )}
-          >
-            <Handshake className="w-4 h-4" />
-            <span>Business Partners ({filteredPartners.length})</span>
-          </button>
-        </div>
-
-        {/* Grid Cards */}
+      <GridPage>
+        <GridTabs
+          tabs={[
+            { key: "customers", label: `Customers (${filteredCustomers.length})` },
+            { key: "partners", label: `Business Partners (${filteredPartners.length})` },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
         {tab === "customers" ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filteredCustomers.map((c) => {
-              const isDark = selectedId === c.id;
-              return (
-                <div
-                  key={c.id}
-                  onClick={() => setSelectedId(c.id)}
-                  className={cn(
-                    "rounded-[14px] p-5 border transition-all cursor-pointer",
-                    isDark
-                      ? "bg-[#19191B] text-white border-[#19191B] shadow-lg"
-                      : "bg-white text-[#18181A] border-[#ECECE7] hover:border-[#D0D0C8]"
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className={cn("font-mono text-[11px]", isDark ? "text-zinc-400" : "text-[#8E8E93]")}>
-                          {c.code}
-                        </span>
-                        <span className={cn("text-[11px] px-2 py-0.5 rounded-full", isDark ? "bg-white/10 text-zinc-200" : "bg-[#F4F4F1] text-[#525258]")}>
-                          {c.tier} · {c.status}
-                        </span>
-                      </div>
-                      <h3 className="mt-1 text-[16px] font-semibold">{c.name}</h3>
-                      <p className={cn("text-[12.5px]", isDark ? "text-zinc-400" : "text-[#78787E]")}>
-                        {c.industry}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openEditCustomer(c);
-                      }}
-                      className={cn("p-1 rounded-md", isDark ? "text-zinc-400 hover:text-white" : "text-[#8E8E93] hover:text-[#18181A]")}
-                    >
-                      <MoreVertical className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className={cn("mt-4 space-y-1.5 text-[12px]", isDark ? "text-zinc-300" : "text-[#525258]")}>
-                    {c.address && (
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-3.5 h-3.5 opacity-70 shrink-0" />
-                        <span className="truncate">{c.address}</span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <Mail className="w-3.5 h-3.5 opacity-70 shrink-0" />
-                      <span className="truncate">{c.contactEmail}</span>
-                    </div>
-                    {c.contactPhone && (
-                      <div className="flex items-center gap-2">
-                        <Phone className="w-3.5 h-3.5 opacity-70 shrink-0" />
-                        <span>{c.contactPhone}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className={cn("mt-4 pt-3 border-t flex items-center justify-between text-[12px]", isDark ? "border-white/10" : "border-[#F1F1EC]")}>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-6 h-6 rounded-full text-[10px] font-medium text-white flex items-center justify-center"
-                        style={{ backgroundColor: c.managerAvatarColor || "#3F3F46" }}
-                      >
-                        {getInitials(c.managerName || "AM")}
-                      </span>
-                      <span className={isDark ? "text-zinc-300" : "text-[#525258]"}>
-                        {c.managerName || "Unassigned"}
-                      </span>
-                    </div>
-                    <span className={cn("font-mono text-[11px] px-2 py-0.5 rounded border", isDark ? "border-white/15 text-zinc-200" : "border-[#E6E6DF] text-[#525258]")}>
-                      {c.serviceCount} services
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <DataGrid
+            key="customers"
+            title="Customers"
+            columns={customerColumns}
+            rows={filteredCustomers}
+            getRowId={(r) => r.id}
+            exportName="customers"
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search customer, industry, contact..."
+            onRefresh={() => void loadAll()}
+            onOpen={(r) => openEditCustomer(r)}
+            actions={[
+              { label: "New", onClick: openCreate, hidden: !can("customers:write") },
+              { label: "Open", needsSelection: true, onClick: (r) => r && openEditCustomer(r) },
+              { label: "Delete", needsSelection: true, tone: "danger", hidden: !can("customers:delete"), onClick: (r) => void deleteCustomer(r) },
+              { label: "My Accounts", active: onlyMine, onClick: () => setOnlyMine((m) => !m) },
+            ]}
+            detail={(r) => (
+              <DetailList
+                items={[
+                  ["Customer", r.name],
+                  ["Customer Location", r.address],
+                  ["Email", r.contactEmail],
+                  ["Phone", r.contactPhone],
+                  ["Contact", r.contactName],
+                  ["Account Manager", r.managerName],
+                  ["Active Services", String(r.serviceCount)],
+                  ["Notes", r.notes],
+                ]}
+              />
+            )}
+          />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredPartners.map((p) => (
-              <div
-                key={p.id}
-                onClick={() => openEditPartner(p)}
-                className="rounded-[14px] p-5 border border-[#ECECE7] bg-white hover:border-[#D0D0C8] transition-all cursor-pointer"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[11px] text-[#8E8E93]">{p.code}</span>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#18181A] text-white">
-                        {p.tier}
-                      </span>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#F4F4F1] text-[#525258]">
-                        {p.partnerType}
-                      </span>
-                    </div>
-                    <h3 className="mt-1.5 text-[16px] font-semibold text-[#18181A]">{p.name}</h3>
-                    <p className="mt-1 text-[12.5px] text-[#78787E]">{p.specialization}</p>
-                  </div>
-                  <MoreVertical className="w-4 h-4 text-[#8E8E93]" />
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-[#F1F1EC] grid grid-cols-1 sm:grid-cols-2 gap-2 text-[12px] text-[#525258]">
-                  <div className="flex items-center gap-1.5">
-                    <UserCheck className="w-3.5 h-3.5 text-[#78787E]" />
-                    <span>{p.contactName}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-[#78787E]" />
-                    <span className="truncate">{p.contactEmail}</span>
-                  </div>
-                  {p.escalationEmail && (
-                    <div className="sm:col-span-2 text-[11.5px] text-[#78787E]">
-                      Escalation desk: <span className="font-mono text-[#18181A]">{p.escalationEmail}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          <DataGrid
+            key="partners"
+            title="Business Partners"
+            columns={partnerColumns}
+            rows={filteredPartners}
+            getRowId={(r) => r.id}
+            exportName="business-partners"
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search partner, specialization..."
+            onRefresh={() => void loadAll()}
+            onOpen={(r) => openEditPartner(r)}
+            actions={[
+              { label: "New", onClick: openCreate, hidden: !can("customers:write") },
+              { label: "Open", needsSelection: true, onClick: (r) => r && openEditPartner(r) },
+              { label: "Delete", needsSelection: true, tone: "danger", hidden: !can("customers:delete"), onClick: (r) => void deletePartner(r) },
+            ]}
+            detail={(r) => (
+              <DetailList
+                items={[
+                  ["Partner", r.name],
+                  ["Address", r.address],
+                  ["Email", r.contactEmail],
+                  ["Phone", r.contactPhone],
+                  ["Escalation Email", r.escalationEmail],
+                  ["Specialization", r.specialization],
+                  ["Notes", r.notes],
+                ]}
+              />
+            )}
+          />
         )}
-      </div>
+      </GridPage>
 
       <RecordModal
         open={modalOpen}

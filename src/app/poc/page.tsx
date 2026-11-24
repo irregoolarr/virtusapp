@@ -2,8 +2,10 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
-import { HeaderAnalyticsBand } from "@/components/HeaderAnalyticsBand";
-import { KanbanBoard, KanbanCardItem } from "@/components/KanbanBoard";
+import { DataGrid, GridPage, GridSelect, type GridColumn } from "@/components/grid/DataGrid";
+import { formatShortDate } from "@/lib/utils";
+import { DetailList } from "@/components/grid/DetailPane";
+import { Mono, Pill, SegmentProgress, severityTone, stageRatio } from "@/components/grid/cells";
 import { RecordModal } from "@/components/RecordModal";
 import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
@@ -118,7 +120,7 @@ export default function PocPage() {
     setModalOpen(true);
   };
 
-  const openEdit = (card: KanbanCardItem) => {
+  const openEdit = (card: { id: number }) => {
     const found = items.find((i) => i.id === card.id);
     if (!found) return;
     setEditing(found);
@@ -199,58 +201,78 @@ export default function PocPage() {
     }
   };
 
-  const cards: KanbanCardItem[] = filtered.map((p) => ({
-    id: p.id,
-    code: p.pocCode,
-    title: p.title,
-    description: p.description,
-    stage: p.status,
-    date: p.targetReviewDate,
-    customerName: p.customerName,
-    customerAddress: p.customerAddress,
-    customerEmail: p.customerEmail,
-    extraLine: `Criteria: ${p.successCriteria}`,
-    assigneeName: p.assigneeName,
-    assigneeJobTitle: p.assigneeJobTitle,
-    assigneeAvatarColor: p.assigneeAvatarColor,
-    commentCount: p.commentCount,
-    attachmentCount: p.attachmentCount,
-    badgeText: `Score ${p.evaluationScore}% · ${p.outcome}`,
-    badgeTone: p.outcome === "Success" ? "success" : "neutral",
-  }));
+  const nextStage = (status: string) => {
+    const idx = STAGES.indexOf(status as (typeof STAGES)[number]);
+    return idx >= 0 && idx < STAGES.length - 1 ? STAGES[idx + 1] : null;
+  };
+
+  const deleteRow = async (row: PocRow | null) => {
+    if (!row || !window.confirm(`Delete ${row.pocCode}?`)) return;
+    const res = await fetch(`/api/poc/${row.id}`, { method: "DELETE" });
+    if (res.ok) {
+      notify("POC deleted");
+      await loadItems();
+    } else {
+      notify("Missing permission to delete", "error");
+    }
+  };
+
+  const columns: GridColumn<PocRow>[] = [
+    { key: "pocCode", header: "POC", width: 120, render: (r) => <Mono>{r.pocCode}</Mono> },
+    { key: "customerName", header: "Customer", width: 170 },
+    { key: "title", header: "Summary", width: 260, wrap: true },
+    { key: "productName", header: "Product", width: 170 },
+    { key: "status", header: "Stage", width: 120 },
+    { key: "progress", header: "Progress", width: 100, value: (r) => STAGES.indexOf(r.status as (typeof STAGES)[number]), render: (r) => <SegmentProgress ratio={stageRatio(STAGES, r.status)} /> },
+    { key: "evaluationScore", header: "Score", width: 80, align: "right", render: (r) => `${r.evaluationScore}%` },
+    { key: "outcome", header: "Outcome", width: 110, render: (r) => <Pill tone={r.outcome === "Success" ? "normal" : r.outcome === "Dropped" ? "critical" : "low"}>{r.outcome}</Pill> },
+    { key: "assigneeName", header: "Lead", width: 150, value: (r) => r.assigneeName ?? "Unassigned" },
+    { key: "targetReviewDate", header: "Review Date", width: 110, value: (r) => r.targetReviewDate ?? "", render: (r) => formatShortDate(r.targetReviewDate) },
+  ];
 
   return (
     <AppShell>
-      <HeaderAnalyticsBand
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search POC title, customer, criteria..."
-        sortDir={sortDir}
-        onToggleSort={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-        onlyMine={onlyMine}
-        onToggleOnlyMine={() => setOnlyMine((m) => !m)}
-        ctaLabel={can("delivery:write") ? "New POC" : undefined}
-        onCtaClick={openCreate}
-        barTitle="POC activity"
-        gaugePct={winRate}
-        gaugeLabel="POC conversion rate"
-        kpi1Value={items.length - approvedCount}
-        kpi1Label="Active POC trials"
-        kpi1Href="/pipeline"
-        kpi2Value={approvedCount}
-        kpi2Label="Approved solutions"
-        kpi2Href="/implementations"
-      />
-
-      <div className="px-6 lg:px-8 py-6">
-        <KanbanBoard
-          columns={[...STAGES]}
-          items={cards}
-          canEdit={can("delivery:write")}
-          onMoveStage={handleMoveStage}
-          onOpenDetail={openEdit}
+      <GridPage>
+        <DataGrid
+          title="POC Status"
+          columns={columns}
+          rows={filtered}
+          getRowId={(r) => r.id}
+          exportName="poc-status"
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search POC, customer, product..."
+          onRefresh={() => void loadItems()}
+          onOpen={(r) => openEdit(r)}
+          actions={[
+            { label: "New", onClick: openCreate, hidden: !can("delivery:write") },
+            { label: "Open", needsSelection: true, onClick: (r) => r && openEdit(r) },
+            {
+              label: "Advance",
+              needsSelection: true,
+              hidden: !can("delivery:write"),
+              onClick: (r) => {
+                const n = r && nextStage(r.status);
+                if (r && n) void handleMoveStage(r.id, n);
+              },
+            },
+            { label: "Delete", needsSelection: true, tone: "danger", hidden: !can("delivery:delete"), onClick: (r) => void deleteRow(r) },
+            { label: "My Items", active: onlyMine, onClick: () => setOnlyMine((m) => !m) },
+          ]}
+          detail={(r) => (
+            <DetailList
+              items={[
+                ["Customer", r.customerName],
+                ["Product", r.productName],
+                ["Success Criteria", r.successCriteria],
+                ["Lead", r.assigneeName ?? "Unassigned"],
+                ["Description", r.description],
+                ["Start Date", formatShortDate(r.startDate)],
+              ]}
+            />
+          )}
         />
-      </div>
+      </GridPage>
 
       <RecordModal
         open={modalOpen}

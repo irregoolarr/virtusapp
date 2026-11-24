@@ -3,8 +3,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckSquare, Plus, Square } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { HeaderAnalyticsBand } from "@/components/HeaderAnalyticsBand";
-import { KanbanBoard, KanbanCardItem } from "@/components/KanbanBoard";
+import { DataGrid, GridPage, GridSelect, type GridColumn } from "@/components/grid/DataGrid";
+import { formatShortDate } from "@/lib/utils";
+import { DetailList } from "@/components/grid/DetailPane";
+import { Mono, Pill, SegmentProgress, severityTone, stageRatio } from "@/components/grid/cells";
 import { RecordModal } from "@/components/RecordModal";
 import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
@@ -126,7 +128,7 @@ export default function ImplementationsPage() {
     setModalOpen(true);
   };
 
-  const openEdit = (card: KanbanCardItem) => {
+  const openEdit = (card: { id: number }) => {
     const found = items.find((i) => i.id === card.id);
     if (!found) return;
     setEditing(found);
@@ -210,58 +212,77 @@ export default function ImplementationsPage() {
     }
   };
 
-  const cards: KanbanCardItem[] = filtered.map((i) => ({
-    id: i.id,
-    code: i.projectCode,
-    title: i.title,
-    description: i.description,
-    stage: i.status,
-    date: i.targetGoLive,
-    customerName: i.customerName,
-    customerAddress: i.customerAddress,
-    customerEmail: i.customerEmail,
-    extraLine: i.blockers ? `Blocker: ${i.blockers}` : `${i.progressPct}% completed`,
-    assigneeName: i.assigneeName,
-    assigneeJobTitle: i.assigneeJobTitle,
-    assigneeAvatarColor: i.assigneeAvatarColor,
-    commentCount: i.commentCount,
-    attachmentCount: i.attachmentCount,
-    badgeText: `${i.progressPct}%`,
-    badgeTone: i.status === "Go-Live" ? "success" : "neutral",
-  }));
+  const nextStage = (status: string) => {
+    const idx = STAGES.indexOf(status as (typeof STAGES)[number]);
+    return idx >= 0 && idx < STAGES.length - 1 ? STAGES[idx + 1] : null;
+  };
+
+  const deleteRow = async (row: ImplementationRow | null) => {
+    if (!row || !window.confirm(`Delete ${row.projectCode}?`)) return;
+    const res = await fetch(`/api/implementations/${row.id}`, { method: "DELETE" });
+    if (res.ok) {
+      notify("Implementation removed");
+      await loadItems();
+    } else {
+      notify("Missing permission to delete", "error");
+    }
+  };
+
+  const columns: GridColumn<ImplementationRow>[] = [
+    { key: "projectCode", header: "Project", width: 120, render: (r) => <Mono>{r.projectCode}</Mono> },
+    { key: "customerName", header: "Customer", width: 170 },
+    { key: "title", header: "Summary", width: 280, wrap: true },
+    { key: "status", header: "Stage", width: 130 },
+    { key: "progressPct", header: "Progress", width: 140, render: (r) => <span className="inline-flex items-center gap-2"><SegmentProgress ratio={r.progressPct / 100} /><span className="tabular-nums">{r.progressPct}%</span></span> },
+    { key: "milestones", header: "Milestones", width: 110, value: (r) => (r.milestones ?? []).filter((m) => m.completed).length, render: (r) => `${(r.milestones ?? []).filter((m) => m.completed).length}/${(r.milestones ?? []).length}` },
+    { key: "blockers", header: "Blocker", width: 200, render: (r) => r.blockers ? <span className="text-[#B42318]">{r.blockers}</span> : "" },
+    { key: "assigneeName", header: "Lead", width: 150, value: (r) => r.assigneeName ?? "Unassigned" },
+    { key: "targetGoLive", header: "Target Go-Live", width: 120, value: (r) => r.targetGoLive ?? "", render: (r) => formatShortDate(r.targetGoLive) },
+  ];
 
   return (
     <AppShell>
-      <HeaderAnalyticsBand
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search deployment project or customer..."
-        sortDir={sortDir}
-        onToggleSort={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-        onlyMine={onlyMine}
-        onToggleOnlyMine={() => setOnlyMine((m) => !m)}
-        ctaLabel={can("delivery:write") ? "New rollout" : undefined}
-        onCtaClick={openCreate}
-        barTitle="Rollout velocity"
-        gaugePct={avgProgress}
-        gaugeLabel="Average rollout progress"
-        kpi1Value={items.length - liveCount}
-        kpi1Label="Active deployments"
-        kpi1Href="/services"
-        kpi2Value={liveCount}
-        kpi2Label="Completed Go-Lives"
-        kpi2Href="/reports"
-      />
-
-      <div className="px-6 lg:px-8 py-6">
-        <KanbanBoard
-          columns={[...STAGES]}
-          items={cards}
-          canEdit={can("delivery:write")}
-          onMoveStage={handleMoveStage}
-          onOpenDetail={openEdit}
+      <GridPage>
+        <DataGrid
+          title="Implementation Status"
+          columns={columns}
+          rows={filtered}
+          getRowId={(r) => r.id}
+          exportName="implementations"
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search project, customer..."
+          onRefresh={() => void loadItems()}
+          onOpen={(r) => openEdit(r)}
+          actions={[
+            { label: "New", onClick: openCreate, hidden: !can("delivery:write") },
+            { label: "Open", needsSelection: true, onClick: (r) => r && openEdit(r) },
+            {
+              label: "Advance",
+              needsSelection: true,
+              hidden: !can("delivery:write"),
+              onClick: (r) => {
+                const n = r && nextStage(r.status);
+                if (r && n) void handleMoveStage(r.id, n);
+              },
+            },
+            { label: "Delete", needsSelection: true, tone: "danger", hidden: !can("delivery:delete"), onClick: (r) => void deleteRow(r) },
+            { label: "My Items", active: onlyMine, onClick: () => setOnlyMine((m) => !m) },
+          ]}
+          detail={(r) => (
+            <DetailList
+              items={[
+                ["Customer", r.customerName],
+                ["Customer Email", r.customerEmail],
+                ["Project Lead", r.assigneeName ?? "Unassigned"],
+                ["Blockers", r.blockers],
+                ["Description", r.description],
+                ["Open Milestones", (r.milestones ?? []).filter((m) => !m.completed).map((m) => m.title).join(", ") || "All milestones complete"],
+              ]}
+            />
+          )}
         />
-      </div>
+      </GridPage>
 
       <RecordModal
         open={modalOpen}
@@ -361,7 +382,7 @@ export default function ImplementationsPage() {
 
           {/* Milestones */}
           <div className="space-y-2">
-            <div className="text-[12px] font-medium text-[#525258]">Rollout Milestones</div>
+            <div className="text-[12px] font-medium text-[#4B5563]">Rollout Milestones</div>
             {form.milestones.map((m) => (
               <button
                 key={m.id}
@@ -374,14 +395,14 @@ export default function ImplementationsPage() {
                     ),
                   })
                 }
-                className="w-full flex items-center gap-2.5 text-left px-3 py-2 rounded-lg border border-[#ECECE7] hover:bg-[#FAF9F5] text-[12.5px]"
+                className="w-full flex items-center gap-2.5 text-left px-3 py-2 rounded-lg border border-[#D9DEE3] hover:bg-[#F6F7F8] text-[12.5px]"
               >
                 {m.completed ? (
-                  <CheckSquare className="w-4 h-4 text-[#18181A]" />
+                  <CheckSquare className="w-4 h-4 text-[#2B3036]" />
                 ) : (
-                  <Square className="w-4 h-4 text-[#8E8E93]" />
+                  <Square className="w-4 h-4 text-[#6B7280]" />
                 )}
-                <span className={m.completed ? "line-through text-[#8E8E93]" : "text-[#18181A]"}>
+                <span className={m.completed ? "line-through text-[#6B7280]" : "text-[#2B3036]"}>
                   {m.title}
                 </span>
               </button>
@@ -407,7 +428,7 @@ export default function ImplementationsPage() {
                   });
                   setNewMilestone("");
                 }}
-                className="px-3 py-2 rounded-[10px] border border-[#E2E2DA] text-[12.5px] font-medium inline-flex items-center gap-1"
+                className="px-3 py-2 rounded-sm border border-[#C9D0D7] text-[12.5px] font-medium inline-flex items-center gap-1"
               >
                 <Plus className="w-3.5 h-3.5" /> Add
               </button>

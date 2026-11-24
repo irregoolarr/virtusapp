@@ -3,7 +3,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Plus, Shield, Users } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { HeaderAnalyticsBand } from "@/components/HeaderAnalyticsBand";
+import { DataGrid, GridPage, GridTabs, type GridColumn } from "@/components/grid/DataGrid";
+import { DetailList } from "@/components/grid/DetailPane";
+import { Pill } from "@/components/grid/cells";
 import { RecordModal } from "@/components/RecordModal";
 import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
@@ -233,185 +235,153 @@ export default function TeamRbacPage() {
 
   const activeUsersCount = team.filter((t) => t.isActive).length;
 
+  const userColumns: GridColumn<TeamUserRow>[] = [
+    {
+      key: "name",
+      header: "Name",
+      width: 200,
+      render: (r) => (
+        <span className="inline-flex items-center gap-2">
+          <span
+            className="w-6 h-6 rounded-full text-[10px] font-semibold text-white flex items-center justify-center shrink-0"
+            style={{ backgroundColor: r.avatarColor || "#475569" }}
+          >
+            {r.name
+              .split(" ")
+              .map((p) => p[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase()}
+          </span>
+          {r.name}
+        </span>
+      ),
+    },
+    { key: "email", header: "Email", width: 220 },
+    { key: "jobTitle", header: "Job Title", width: 200 },
+    { key: "department", header: "Department", width: 150 },
+    { key: "roleName", header: "Role", width: 150 },
+    { key: "availability", header: "Availability", width: 120 },
+    {
+      key: "isActive",
+      header: "Account",
+      width: 100,
+      value: (r) => (r.isActive ? "Active" : "Disabled"),
+      render: (r) => <Pill tone={r.isActive ? "normal" : "critical"}>{r.isActive ? "Active" : "Disabled"}</Pill>,
+    },
+    { key: "phone", header: "Phone", width: 150 },
+  ];
+
   return (
     <AppShell>
-      <HeaderAnalyticsBand
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search team member, role, department..."
-        ctaLabel={
-          tab === "users" && can("users:manage")
-            ? "Add member"
-            : tab === "rbac" && can("rbac:manage")
-              ? "New role"
-              : undefined
-        }
-        onCtaClick={() => (tab === "users" ? openCreateUser() : setRoleModalOpen(true))}
-        barTitle="Team coverage"
-        gaugePct={
-          team.length > 0 ? Math.round((activeUsersCount / team.length) * 100) : 100
-        }
-        gaugeLabel="Active team roster"
-        kpi1Value={team.length}
-        kpi1Label="Registered team members"
-        kpi1Href="/team"
-        kpi2Value={roles.length}
-        kpi2Label="Configured RBAC roles"
-        kpi2Href="/settings"
-      />
-
-      <div className="px-6 lg:px-8 py-6 space-y-5">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setTab("users")}
-            className={cn(
-              "inline-flex items-center gap-2 px-4 py-2 rounded-[10px] text-[13px] font-medium border",
-              tab === "users"
-                ? "bg-[#18181A] text-white border-[#18181A]"
-                : "bg-white text-[#525258] border-[#E4E4DC]"
-            )}
-          >
-            <Users className="w-4 h-4" />
-            <span>Team Members ({filteredUsers.length})</span>
-          </button>
-          <button
-            onClick={() => setTab("rbac")}
-            className={cn(
-              "inline-flex items-center gap-2 px-4 py-2 rounded-[10px] text-[13px] font-medium border",
-              tab === "rbac"
-                ? "bg-[#18181A] text-white border-[#18181A]"
-                : "bg-white text-[#525258] border-[#E4E4DC]"
-            )}
-          >
-            <Shield className="w-4 h-4" />
-            <span>Role-Based Access Control ({roles.length})</span>
-          </button>
-        </div>
-
+      <GridPage>
+        <GridTabs
+          tabs={[
+            { key: "users", label: `Team Members (${filteredUsers.length})` },
+            { key: "rbac", label: `Roles & Permissions (${roles.length})` },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
         {tab === "users" ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filteredUsers.map((m) => (
-              <div
-                key={m.id}
-                onClick={() => can("users:manage") && openEditUser(m)}
-                className={cn(
-                  "rounded-[14px] border border-[#ECECE7] bg-white p-5 transition-all",
-                  can("users:manage") && "hover:border-[#D0D0C8] cursor-pointer"
-                )}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-semibold text-white"
-                        style={{ backgroundColor: m.avatarColor || "#18181A" }}
-                      >
-                        {getInitials(m.name)}
-                      </div>
-                      <span
-                        className={cn(
-                          "absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ring-2 ring-white",
-                          m.availability === "Online" || m.availability === "On Duty"
-                            ? "bg-emerald-500"
-                            : m.availability === "Away"
-                              ? "bg-amber-400"
-                              : "bg-zinc-300"
-                        )}
-                      />
-                    </div>
-                    <div>
-                      <h3 className="text-[15px] font-semibold text-[#18181A]">{m.name}</h3>
-                      <p className="text-[12px] text-[#78787E]">{m.jobTitle}</p>
-                    </div>
-                  </div>
-                  <span
-                    className={cn(
-                      "text-[11px] font-medium px-2.5 py-0.5 rounded-full",
-                      m.isActive
-                        ? "bg-[#18181A] text-white"
-                        : "bg-zinc-100 text-zinc-500"
-                    )}
-                  >
-                    {m.roleName}
-                  </span>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-[#F1F1EC] space-y-1 text-[12px] text-[#525258]">
-                  <div>{m.email}</div>
-                  <div className="flex items-center justify-between text-[#8E8E93]">
-                    <span>{m.department}</span>
-                    <span>{m.isActive ? m.availability : "Deactivated"}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <DataGrid
+            title="Team Members"
+            columns={userColumns}
+            rows={filteredUsers}
+            getRowId={(r) => r.id}
+            exportName="team-members"
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search member, role, department..."
+            onRefresh={() => void loadAll()}
+            onOpen={(r) => openEditUser(r)}
+            rowTone={(r) => (!r.isActive ? "critical" : undefined)}
+            actions={[
+              { label: "New", onClick: openCreateUser, hidden: !can("users:manage") },
+              { label: "Open", needsSelection: true, onClick: (r) => r && openEditUser(r) },
+            ]}
+            detail={(r) => (
+              <DetailList
+                items={[
+                  ["Name", r.name],
+                  ["Email", r.email],
+                  ["Phone", r.phone],
+                  ["Job Title", r.jobTitle],
+                  ["Department", r.department],
+                  ["Role", r.roleName],
+                ]}
+              />
+            )}
+          />
         ) : (
-          <div className="space-y-4">
-            <div className="rounded-[14px] border border-[#ECECE7] bg-[#FAF9F5] p-4 flex flex-wrap items-center justify-between gap-3 text-[12.5px]">
-              <span className="text-[#525258]">
-                {can("rbac:manage")
-                  ? "Click any permission cell below to grant or revoke module capabilities in PostgreSQL."
-                  : "Viewing RBAC matrix in read-only mode. Super Admin role is required to edit permissions."}
+          <section className="bg-white border border-[#D9DEE3] flex flex-col min-w-0">
+            <div className="px-4 pt-3 flex items-baseline gap-2">
+              <h1 className="text-[16px] font-semibold text-[#2B3036]">Roles &amp; Permissions</h1>
+              <span className="text-[12.5px] text-[#6B7280]">
+                {can("rbac:manage") ? "Click a cell to grant or revoke a permission." : "Read-only. Super Admin can edit permissions."}
               </span>
+            </div>
+            <div className="flex items-center px-2.5 py-1.5 border-b border-[#D9DEE3]">
               {can("rbac:manage") && (
                 <button
+                  type="button"
                   onClick={() => setRoleModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#18181A] text-white text-[12px] font-medium"
+                  className="h-8 px-2 text-[12.5px] font-semibold uppercase tracking-[0.02em] text-[#1668AC] hover:text-[#0F4F86]"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Create Custom Role
+                  New Role
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => void loadAll()}
+                className="h-8 px-2 text-[12.5px] font-semibold uppercase tracking-[0.02em] text-[#1668AC] hover:text-[#0F4F86]"
+              >
+                Refresh
+              </button>
             </div>
-
-            <div className="rounded-[14px] border border-[#ECECE7] bg-white overflow-x-auto">
-              <table className="w-full text-left text-[12.5px]">
-                <thead className="bg-[#FAF9F5] border-b border-[#ECECE7]">
+            <div className="overflow-auto max-h-[calc(100vh-215px)]">
+              <table className="w-full text-left text-[13px] text-[#2B3036] border-collapse">
+                <thead>
                   <tr>
-                    <th className="py-3 px-4 font-semibold text-[#18181A] min-w-[230px]">
-                      Module / Capability
+                    <th className="sticky top-0 z-10 bg-white px-3 h-12 font-semibold border-b border-[#D9DEE3] min-w-[260px]">
+                      Permission
                     </th>
                     {roles.map((r) => (
-                      <th key={r.id} className="py-3 px-3 text-center font-semibold text-[#18181A]">
+                      <th key={r.id} className="sticky top-0 z-10 bg-white px-3 h-12 text-center font-semibold border-b border-[#D9DEE3] whitespace-nowrap">
                         <div>{r.name}</div>
-                        <div className="text-[10.5px] font-normal text-[#8E8E93]">
-                          {r.memberCount} member(s)
-                        </div>
+                        <div className="text-[11px] font-normal text-[#6B7280]">{r.memberCount} member(s)</div>
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#F1F1EC]">
+                <tbody>
                   {permsByModule.map(([mod, list]) => (
                     <React.Fragment key={mod}>
-                      <tr className="bg-[#FAF9F5]/60">
-                        <td
-                          colSpan={roles.length + 1}
-                          className="py-2 px-4 text-[11px] font-semibold uppercase tracking-wider text-[#78787E]"
-                        >
+                      <tr className="bg-[#EEF1F4]">
+                        <td colSpan={roles.length + 1} className="px-3 py-1.5 text-[12px] font-semibold text-[#4B5563]">
                           {mod}
                         </td>
                       </tr>
-                      {list.map((p) => (
-                        <tr key={p.key} className="hover:bg-[#FAF9F5]">
-                          <td className="py-2.5 px-4">
-                            <div className="font-medium text-[#18181A]">{p.label}</div>
-                            <div className="font-mono text-[10.5px] text-[#8E8E93]">{p.key}</div>
+                      {list.map((p, i) => (
+                        <tr key={p.key} className={i % 2 === 1 ? "bg-[#F6F7F8]" : "bg-white"}>
+                          <td className="px-3 py-2">
+                            <div>{p.label}</div>
+                            <div className="font-mono text-[11px] text-[#6B7280]">{p.key}</div>
                           </td>
                           {roles.map((role) => {
                             const active = role.permissions.includes(p.key);
                             return (
-                              <td key={role.id} className="py-2.5 px-3 text-center">
+                              <td key={role.id} className="px-3 py-2 text-center">
                                 <button
                                   type="button"
                                   disabled={!can("rbac:manage")}
                                   onClick={() => void toggleRolePermission(role, p.key)}
+                                  aria-pressed={active}
+                                  aria-label={`${active ? "Revoke" : "Grant"} ${p.key} for ${role.name}`}
                                   className={cn(
-                                    "w-6 h-6 rounded-md inline-flex items-center justify-center border transition-colors",
-                                    active
-                                      ? "bg-[#18181A] border-[#18181A] text-white"
-                                      : "bg-white border-[#DFDFD6] text-transparent hover:border-[#18181A]",
-                                    !can("rbac:manage") && "opacity-70 cursor-default"
+                                    "w-5 h-5 inline-flex items-center justify-center border",
+                                    active ? "bg-[#1668AC] border-[#1668AC] text-white" : "bg-white border-[#B7C0C9] text-transparent hover:border-[#1668AC]",
+                                    !can("rbac:manage") && "cursor-default"
                                   )}
                                 >
                                   <Check className="w-3.5 h-3.5" />
@@ -426,9 +396,9 @@ export default function TeamRbacPage() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </section>
         )}
-      </div>
+      </GridPage>
 
       {/* User Modal */}
       <RecordModal
@@ -513,7 +483,7 @@ export default function TeamRbacPage() {
               </select>
             </FieldLabel>
           </div>
-          <label className="flex items-center gap-2 text-[13px] text-[#18181A]">
+          <label className="flex items-center gap-2 text-[13px] text-[#2B3036]">
             <input
               type="checkbox"
               checked={userForm.isActive}

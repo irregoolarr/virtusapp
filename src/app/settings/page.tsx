@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Mail, Send, ShieldAlert } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { HeaderAnalyticsBand } from "@/components/HeaderAnalyticsBand";
 import { FieldLabel, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ToastProvider";
@@ -99,30 +98,26 @@ export default function SettingsPage() {
 
   return (
     <AppShell>
-      <HeaderAnalyticsBand
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Settings & SMTP configuration"
-        compact
-      />
 
-      <div className="px-6 lg:px-8 py-6 max-w-4xl space-y-6">
+      <div className="p-3 sm:p-4 bg-[#EEF1F4] flex-1 space-y-4">
+        <h1 className="text-[18px] font-semibold text-[#2B3036]">Settings</h1>
+        <div className="max-w-4xl space-y-4">
         {!can("settings:manage") ? (
-          <div className="rounded-[14px] border border-[#ECECE7] bg-[#FAF9F5] p-6 flex items-center gap-3 text-[13.5px] text-[#525258]">
-            <ShieldAlert className="w-5 h-5 text-[#18181A]" />
+          <div className="rounded-sm border border-[#D9DEE3] bg-[#F6F7F8] p-6 flex items-center gap-3 text-[13.5px] text-[#4B5563]">
+            <ShieldAlert className="w-5 h-5 text-[#2B3036]" />
             <span>
               Settings access requires <code className="font-mono">settings:manage</code> permission (Super Admin).
             </span>
           </div>
         ) : (
           <form onSubmit={handleSave} className="space-y-6">
-            <div className="rounded-[14px] border border-[#ECECE7] bg-white p-6 space-y-4">
+            <div className="rounded-sm border border-[#D9DEE3] bg-white p-6 space-y-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-[17px] font-semibold text-[#18181A] flex items-center gap-2">
+                  <h2 className="text-[17px] font-semibold text-[#2B3036] flex items-center gap-2">
                     <Mail className="w-4 h-4" /> SMTP Email Alerting Transport
                   </h2>
-                  <p className="mt-1 text-[12.5px] text-[#78787E]">
+                  <p className="mt-1 text-[12.5px] text-[#6B7280]">
                     Leave SMTP Host empty to log all scheduled reminders and alerts into the built-in Sandbox Outbox for safe testing, or enter your live SMTP credentials for real email delivery.
                   </p>
                 </div>
@@ -191,7 +186,7 @@ export default function SettingsPage() {
                 </FieldLabel>
               </div>
 
-              <label className="flex items-center gap-2 text-[13px] text-[#525258]">
+              <label className="flex items-center gap-2 text-[13px] text-[#4B5563]">
                 <input
                   type="checkbox"
                   checked={smtp.secure}
@@ -201,8 +196,8 @@ export default function SettingsPage() {
               </label>
             </div>
 
-            <div className="rounded-[14px] border border-[#ECECE7] bg-white p-6 space-y-4">
-              <h2 className="text-[17px] font-semibold text-[#18181A]">
+            <div className="rounded-sm border border-[#D9DEE3] bg-white p-6 space-y-4">
+              <h2 className="text-[17px] font-semibold text-[#2B3036]">
                 SLA & Contract Alert Thresholds
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -255,7 +250,7 @@ export default function SettingsPage() {
                   type="button"
                   disabled={testing}
                   onClick={() => void handleSendTest()}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[10px] border border-[#E2E2DA] bg-white hover:bg-[#FAF9F5] text-[12.5px] font-medium shrink-0"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-sm border border-[#C9D0D7] bg-white hover:bg-[#F6F7F8] text-[12.5px] font-medium shrink-0"
                 >
                   <Send className="w-3.5 h-3.5" />
                   {testing ? "Testing..." : "Send Test Alert"}
@@ -265,13 +260,14 @@ export default function SettingsPage() {
               <button
                 type="submit"
                 disabled={saving}
-                className="px-5 py-2.5 rounded-[10px] bg-[#18181A] hover:bg-[#2C2C30] text-white text-[13px] font-medium disabled:opacity-50"
+                className="px-5 py-2.5 rounded-sm bg-[#1668AC] hover:bg-[#0F4F86] text-white text-[13px] font-medium disabled:opacity-50"
               >
                 {saving ? "Saving..." : "Save Configuration"}
               </button>
             </div>
           </form>
         )}
+        </div>
       </div>
     </AppShell>
   );

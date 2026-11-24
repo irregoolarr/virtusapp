@@ -150,10 +150,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   title={compact ? item.label : undefined}
                   onClick={() => setMobileOpen(false)}
                   className={cn(
-                    "relative flex items-center gap-3 rounded-md text-[13.5px] transition-colors",
+                    "relative flex items-center gap-3 rounded-sm text-[13.5px] transition-colors",
                     compact ? "justify-center h-10" : "px-3 py-2.5",
                     active
-                      ? "bg-white/[0.12] text-white font-medium"
+                      ? "bg-white/[0.14] text-white font-medium"
                       : "text-white/75 hover:bg-white/[0.06] hover:text-white"
                   )}
                 >
@@ -178,39 +178,43 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[#F5F7FA] text-[#0F172A]">
       {/* Top bar */}
-      <header className="fixed top-0 inset-x-0 z-30 h-14 bg-[#0B1F44] text-white flex items-center justify-between pl-3 pr-3 sm:pr-5 shadow-[0_1px_0_rgba(255,255,255,0.06)]">
+      <header className="fixed top-0 inset-x-0 z-30 h-14 bg-white text-[#2B3036] border-b border-[#D9DEE3] flex items-center justify-between pl-3 pr-3 sm:pr-5">
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={toggleSidebar}
             aria-label="Toggle navigation"
-            className="w-10 h-10 rounded-md flex items-center justify-center text-white/85 hover:bg-white/10 hover:text-white"
+            className="w-10 h-10 rounded-sm flex items-center justify-center text-[#4B5563] hover:bg-[#EEF1F4] hover:text-[#2B3036]"
           >
             <Menu className="w-5 h-5" />
           </button>
-          <Link href="/" className="flex items-center gap-2.5 min-w-0">
-            <span className="bg-white rounded-md px-1.5 py-1 flex items-center">
-              <Image src="/images/virtus-logo.png" alt="Virtus" width={36} height={38} className="h-7 w-auto object-contain" />
-            </span>
-            <span className="text-[16px] font-semibold tracking-[0.04em] truncate">VirtusMS</span>
+          <Link href="/" className="flex items-center min-w-0" aria-label="Virtus home">
+            <Image
+              src="/images/virtus-logo-full.png"
+              alt="Virtus — a member of CTI Group"
+              width={560}
+              height={193}
+              priority
+              className="h-9 w-auto object-contain"
+            />
           </Link>
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2">
           {can("events:read") && (
-            <Link href="/events" title="Event schedule" className="hidden sm:flex w-10 h-10 rounded-md items-center justify-center text-white/85 hover:bg-white/10 hover:text-white">
+            <Link href="/events" title="Event schedule" className="hidden sm:flex w-10 h-10 rounded-sm items-center justify-center text-[#4B5563] hover:bg-[#EEF1F4] hover:text-[#1668AC]">
               <CalendarDays className="w-5 h-5" />
             </Link>
           )}
           {can("users:read") && (
-            <Link href="/team" title="Team" className="hidden sm:flex w-10 h-10 rounded-md items-center justify-center text-white/85 hover:bg-white/10 hover:text-white">
+            <Link href="/team" title="Team" className="hidden sm:flex w-10 h-10 rounded-sm items-center justify-center text-[#4B5563] hover:bg-[#EEF1F4] hover:text-[#1668AC]">
               <Users className="w-5 h-5" />
             </Link>
           )}
           {can("events:read") && (
-            <Link href="/events" title={`${eventsBadge} scheduled reminders`} className="relative flex w-10 h-10 rounded-md items-center justify-center text-white/85 hover:bg-white/10 hover:text-white">
+            <Link href="/events" title={`${eventsBadge} scheduled reminders`} className="relative flex w-10 h-10 rounded-sm items-center justify-center text-[#4B5563] hover:bg-[#EEF1F4] hover:text-[#1668AC]">
               <Bell className="w-5 h-5" />
               {eventsBadge > 0 && (
-                <span className="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[#FF2224] text-[10px] font-semibold leading-4 text-center tabular-nums">
+                <span className="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[#FF2224] text-[10px] font-semibold leading-4 text-center tabular-nums text-white">
                   {eventsBadge}
                 </span>
               )}
@@ -221,7 +225,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <button
               onClick={() => setMenuOpen((v) => !v)}
               aria-expanded={menuOpen}
-              className="flex items-center gap-2.5 h-10 pl-1.5 pr-2.5 rounded-md border border-white/25 hover:bg-white/10"
+              className="flex items-center gap-2.5 h-10 pl-1.5 pr-2.5 rounded-sm border border-[#C9D0D7] hover:bg-[#EEF1F4]"
             >
               <span
                 className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-semibold text-white"
@@ -231,12 +235,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </span>
               <span className="hidden md:block text-left leading-tight max-w-[160px]">
                 <span className="block text-[12.5px] font-medium truncate">{user.name}</span>
-                <span className="block text-[10.5px] text-white/60 truncate">{user.roleName}</span>
+                <span className="block text-[10.5px] text-[#6B7280] truncate">{user.roleName}</span>
               </span>
-              <ChevronDown className="w-4 h-4 text-white/70" />
+              <ChevronDown className="w-4 h-4 text-[#6B7280]" />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 mt-2 w-56 rounded-md border border-[#E2E8F0] bg-white text-[#0F172A] shadow-lg py-1.5 z-40">
+              <div className="absolute right-0 mt-2 w-56 rounded-sm border border-[#E2E8F0] bg-white text-[#0F172A] shadow-lg py-1.5 z-40">
                 <div className="px-3.5 py-2 border-b border-[#F1F5F9]">
                   <div className="text-[13px] font-medium truncate">{user.name}</div>
                   <div className="text-[11.5px] text-[#64748B] truncate">{user.email}</div>
@@ -261,7 +265,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Desktop sidebar */}
       <aside
         className={cn(
-          "hidden lg:block fixed top-14 bottom-0 left-0 z-20 bg-[#102A5C] overflow-y-auto transition-[width] duration-200",
+          "hidden lg:block fixed top-14 bottom-0 left-0 z-20 bg-[#0D3461] overflow-y-auto transition-[width] duration-200",
           collapsed ? "w-[68px] px-2.5 py-4" : "w-[248px] px-3 py-5"
         )}
       >
@@ -272,7 +276,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute top-0 bottom-0 left-0 w-[264px] max-w-[84vw] bg-[#102A5C] px-3 py-4 overflow-y-auto shadow-xl">
+          <aside className="absolute top-0 bottom-0 left-0 w-[264px] max-w-[84vw] bg-[#0D3461] px-3 py-4 overflow-y-auto shadow-xl">
             <div className="flex items-center justify-between px-2 mb-5">
               <span className="text-white text-[15px] font-semibold">VirtusMS</span>
               <button onClick={() => setMobileOpen(false)} aria-label="Close navigation" className="p-1.5 text-white/75 hover:text-white">

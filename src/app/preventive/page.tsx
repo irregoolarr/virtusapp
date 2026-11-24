@@ -3,8 +3,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckSquare, Plus, Square } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { HeaderAnalyticsBand } from "@/components/HeaderAnalyticsBand";
-import { KanbanBoard, KanbanCardItem } from "@/components/KanbanBoard";
+import { DataGrid, GridPage, GridSelect, type GridColumn } from "@/components/grid/DataGrid";
+import { formatShortDate } from "@/lib/utils";
+import { DetailList } from "@/components/grid/DetailPane";
+import { Mono, Pill, SegmentProgress, severityTone, stageRatio } from "@/components/grid/cells";
 import { RecordModal } from "@/components/RecordModal";
 import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
@@ -124,7 +126,7 @@ export default function PreventivePage() {
     setModalOpen(true);
   };
 
-  const openEdit = (card: KanbanCardItem) => {
+  const openEdit = (card: { id: number }) => {
     const found = items.find((i) => i.id === card.id);
     if (!found) return;
     setEditing(found);
@@ -204,80 +206,86 @@ export default function PreventivePage() {
     }
   };
 
-  const cards: KanbanCardItem[] = filtered.map((p) => {
-    const doneCount = (p.checklist ?? []).filter((c) => c.done).length;
-    const totalCount = (p.checklist ?? []).length;
-    return {
-      id: p.id,
-      code: p.planCode,
-      title: p.title,
-      description: p.description,
-      stage: p.status,
-      date: p.scheduledDate,
-      customerName: p.customerName,
-      customerAddress: p.customerAddress,
-      customerEmail: p.customerEmail,
-      extraLine: `${p.frequency} · ${doneCount}/${totalCount} checks`,
-      assigneeName: p.assigneeName,
-      assigneeJobTitle: p.assigneeJobTitle,
-      assigneeAvatarColor: p.assigneeAvatarColor,
-      commentCount: p.commentCount,
-      attachmentCount: p.attachmentCount,
-      badgeText: `${p.frequency} (${doneCount}/${totalCount})`,
-    };
-  });
+  const nextStage = (status: string) => {
+    const idx = STAGES.indexOf(status as (typeof STAGES)[number]);
+    return idx >= 0 && idx < STAGES.length - 1 ? STAGES[idx + 1] : null;
+  };
+
+  const deleteRow = async (row: PreventiveRow | null) => {
+    if (!row || !window.confirm(`Delete ${row.planCode}?`)) return;
+    const res = await fetch(`/api/maintenance/preventive/${row.id}`, { method: "DELETE" });
+    if (res.ok) {
+      notify("PM plan deleted");
+      await Promise.all([loadItems(), refreshLookups()]);
+    } else {
+      notify("Missing permission to delete", "error");
+    }
+  };
+
+  const columns: GridColumn<PreventiveRow>[] = [
+    { key: "planCode", header: "Plan", width: 120, render: (r) => <Mono>{r.planCode}</Mono> },
+    { key: "frequency", header: "Frequency", width: 120, render: (r) => <Pill tone="low">{r.frequency}</Pill> },
+    { key: "customerName", header: "Customer", width: 170 },
+    { key: "title", header: "Summary", width: 280, wrap: true },
+    { key: "status", header: "Status", width: 120 },
+    { key: "progress", header: "Progress", width: 100, value: (r) => STAGES.indexOf(r.status as (typeof STAGES)[number]), render: (r) => <SegmentProgress ratio={stageRatio(STAGES, r.status)} /> },
+    { key: "checks", header: "Checklist", width: 100, value: (r) => (r.checklist ?? []).filter((c) => c.done).length, render: (r) => `${(r.checklist ?? []).filter((c) => c.done).length}/${(r.checklist ?? []).length}` },
+    { key: "serviceCode", header: "Service", width: 130 },
+    { key: "assigneeName", header: "Owner", width: 150, value: (r) => r.assigneeName ?? "Unassigned" },
+    { key: "scheduledDate", header: "Scheduled", width: 110, render: (r) => formatShortDate(r.scheduledDate) },
+  ];
 
   return (
     <AppShell>
-      <HeaderAnalyticsBand
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search PM plan, frequency, customer..."
-        sortDir={sortDir}
-        onToggleSort={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-        showFilters={showFilters}
-        onToggleFilters={() => setShowFilters((s) => !s)}
-        onlyMine={onlyMine}
-        onToggleOnlyMine={() => setOnlyMine((m) => !m)}
-        ctaLabel={can("maintenance:write") ? "Schedule PM" : undefined}
-        onCtaClick={openCreate}
-        barTitle="PM execution cadence"
-        gaugePct={compliancePct}
-        gaugeLabel="PM completion rate"
-        kpi1Value={items.length - completed}
-        kpi1Label="Upcoming PM windows"
-        kpi1Href="/events"
-        kpi2Value={completed}
-        kpi2Label="Completed audits"
-        kpi2Href="/reports"
-        filterBar={
-          <div className="flex flex-wrap gap-2">
-            {["ALL", ...FREQS].map((f) => (
-              <button
-                key={f}
-                onClick={() => setFreqFilter(f)}
-                className={`px-3 py-1 rounded-full text-[12px] font-medium border ${
-                  freqFilter === f
-                    ? "bg-[#18181A] text-white border-[#18181A]"
-                    : "bg-white text-[#525258] border-[#E4E4DC]"
-                }`}
-              >
-                {f === "ALL" ? "All frequencies" : f}
-              </button>
-            ))}
-          </div>
-        }
-      />
-
-      <div className="px-6 lg:px-8 py-6">
-        <KanbanBoard
-          columns={[...STAGES]}
-          items={cards}
-          canEdit={can("maintenance:write")}
-          onMoveStage={handleMoveStage}
-          onOpenDetail={openEdit}
+      <GridPage>
+        <DataGrid
+          title="Preventive Maintenance"
+          columns={columns}
+          rows={filtered}
+          getRowId={(r) => r.id}
+          exportName="preventive-maintenance"
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search PM plan, customer..."
+          onRefresh={() => void loadItems()}
+          onOpen={(r) => openEdit(r)}
+          actions={[
+            { label: "New", onClick: openCreate, hidden: !can("maintenance:write") },
+            { label: "Open", needsSelection: true, onClick: (r) => r && openEdit(r) },
+            {
+              label: "Advance",
+              needsSelection: true,
+              hidden: !can("maintenance:write"),
+              onClick: (r) => {
+                const n = r && nextStage(r.status);
+                if (r && n) void handleMoveStage(r.id, n);
+              },
+            },
+            { label: "Delete", needsSelection: true, tone: "danger", hidden: !can("maintenance:delete"), onClick: (r) => void deleteRow(r) },
+            { label: "My Items", active: onlyMine, onClick: () => setOnlyMine((m) => !m) },
+          ]}
+          filters={
+            <GridSelect
+              label="Frequency"
+              value={freqFilter}
+              onChange={setFreqFilter}
+              options={[{ value: "ALL", label: "All frequencies" }, ...FREQS.map((f) => ({ value: f, label: f }))]}
+            />
+          }
+          detail={(r) => (
+            <DetailList
+              items={[
+                ["Customer", r.customerName],
+                ["Customer Email", r.customerEmail],
+                ["Service Number", r.serviceCode],
+                ["Assigned Engineer", r.assigneeName ?? "Unassigned"],
+                ["Description", r.description],
+                ["Open Checks", (r.checklist ?? []).filter((c) => !c.done).map((c) => c.label).join(", ") || "All checks complete"],
+              ]}
+            />
+          )}
         />
-      </div>
+      </GridPage>
 
       <RecordModal
         open={modalOpen}
@@ -371,7 +379,7 @@ export default function PreventivePage() {
 
           {/* Interactive Checklist */}
           <div className="space-y-2">
-            <div className="text-[12px] font-medium text-[#525258]">Inspection Checklist</div>
+            <div className="text-[12px] font-medium text-[#4B5563]">Inspection Checklist</div>
             <div className="space-y-1.5">
               {form.checklist.map((c) => (
                 <button
@@ -385,14 +393,14 @@ export default function PreventivePage() {
                       ),
                     })
                   }
-                  className="w-full flex items-center gap-2.5 text-left px-3 py-2 rounded-lg border border-[#ECECE7] hover:bg-[#FAF9F5] text-[12.5px]"
+                  className="w-full flex items-center gap-2.5 text-left px-3 py-2 rounded-lg border border-[#D9DEE3] hover:bg-[#F6F7F8] text-[12.5px]"
                 >
                   {c.done ? (
-                    <CheckSquare className="w-4 h-4 text-[#18181A] shrink-0" />
+                    <CheckSquare className="w-4 h-4 text-[#2B3036] shrink-0" />
                   ) : (
-                    <Square className="w-4 h-4 text-[#8E8E93] shrink-0" />
+                    <Square className="w-4 h-4 text-[#6B7280] shrink-0" />
                   )}
-                  <span className={c.done ? "line-through text-[#8E8E93]" : "text-[#18181A]"}>
+                  <span className={c.done ? "line-through text-[#6B7280]" : "text-[#2B3036]"}>
                     {c.label}
                   </span>
                 </button>
@@ -419,7 +427,7 @@ export default function PreventivePage() {
                   });
                   setNewCheckLabel("");
                 }}
-                className="px-3 py-2 rounded-[10px] border border-[#E2E2DA] text-[12.5px] font-medium hover:bg-[#F4F4F1] shrink-0 inline-flex items-center gap-1"
+                className="px-3 py-2 rounded-sm border border-[#C9D0D7] text-[12.5px] font-medium hover:bg-[#EEF1F4] shrink-0 inline-flex items-center gap-1"
               >
                 <Plus className="w-3.5 h-3.5" /> Add
               </button>

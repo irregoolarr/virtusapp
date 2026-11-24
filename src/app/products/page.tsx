@@ -3,7 +3,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Clock, MoreVertical, Package } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { HeaderAnalyticsBand } from "@/components/HeaderAnalyticsBand";
+import { DataGrid, GridPage, GridSelect, type GridColumn } from "@/components/grid/DataGrid";
+import { DetailList } from "@/components/grid/DetailPane";
+import { Mono, Pill, SegmentProgress, severityTone, stageRatio } from "@/components/grid/cells";
 import { RecordModal } from "@/components/RecordModal";
 import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
@@ -152,93 +154,71 @@ export default function ProductsPage() {
     }
   };
 
+  const deleteRow = async (row: ProductRow | null) => {
+    if (!row || !window.confirm(`Delete ${row.name}?`)) return;
+    const res = await fetch(`/api/products/${row.id}`, { method: "DELETE" });
+    if (res.ok) {
+      notify("Product removed");
+      await Promise.all([loadItems(), refreshLookups()]);
+    } else {
+      notify("Missing permission to delete", "error");
+    }
+  };
+
+  const columns: GridColumn<ProductRow>[] = [
+    { key: "sku", header: "SKU", width: 140, render: (r) => <Mono>{r.sku}</Mono> },
+    { key: "name", header: "Product / Solution", width: 220, wrap: true },
+    { key: "category", header: "Category", width: 150 },
+    { key: "vendorName", header: "Vendor", width: 150 },
+    { key: "partnerName", header: "Partner", width: 160 },
+    { key: "slaTargetHours", header: "SLA Target", width: 100, align: "right", render: (r) => `${r.slaTargetHours}h` },
+    { key: "pricingModel", header: "Pricing", width: 120 },
+    { key: "unitPriceUsd", header: "Unit Price", width: 110, align: "right", render: (r) => formatCurrency(r.unitPriceUsd) },
+    { key: "activeDeployments", header: "Deployments", width: 110, align: "right" },
+    { key: "status", header: "Status", width: 110, render: (r) => <Pill tone={r.status === "Active" ? "normal" : "low"}>{r.status}</Pill> },
+  ];
+
   return (
     <AppShell>
-      <HeaderAnalyticsBand
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search SKU, solution, vendor..."
-        showFilters={showFilters}
-        onToggleFilters={() => setShowFilters((s) => !s)}
-        ctaLabel={can("products:write") ? "Add solution" : undefined}
-        onCtaClick={openCreate}
-        barTitle="Solution adoption"
-        gaugePct={
-          items.length > 0
-            ? Math.round((items.filter((i) => i.status === "Active").length / items.length) * 100)
-            : 100
-        }
-        gaugeLabel="Active catalog items"
-        kpi1Value={items.length}
-        kpi1Label="Products & solutions"
-        kpi1Href="/poc"
-        kpi2Value={totalDeployments}
-        kpi2Label="Linked service deployments"
-        kpi2Href="/services"
-        filterBar={
-          <div className="flex flex-wrap gap-2">
-            {["ALL", ...categories].map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setCatFilter(cat)}
-                className={`px-3 py-1 rounded-full text-[12px] font-medium border ${
-                  catFilter === cat
-                    ? "bg-[#18181A] text-white border-[#18181A]"
-                    : "bg-white text-[#525258] border-[#E4E4DC]"
-                }`}
-              >
-                {cat === "ALL" ? "All categories" : cat}
-              </button>
-            ))}
-          </div>
-        }
-      />
-
-      <div className="px-6 lg:px-8 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map((p) => (
-            <div
-              key={p.id}
-              onClick={() => openEdit(p)}
-              className="rounded-[14px] border border-[#ECECE7] bg-white p-5 hover:border-[#D0D0C8] transition-all cursor-pointer flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="p-2 rounded-lg bg-[#F4F4F1] text-[#18181A]">
-                      <Package className="w-4 h-4" />
-                    </span>
-                    <div>
-                      <span className="font-mono text-[11px] text-[#8E8E93]">{p.sku}</span>
-                      <div className="text-[11px] font-medium text-[#525258]">{p.category}</div>
-                    </div>
-                  </div>
-                  <MoreVertical className="w-4 h-4 text-[#8E8E93]" />
-                </div>
-
-                <h3 className="mt-3.5 text-[16px] font-semibold text-[#18181A]">{p.name}</h3>
-                <p className="mt-1.5 text-[12.5px] text-[#78787E] leading-relaxed line-clamp-2">
-                  {p.description}
-                </p>
-              </div>
-
-              <div className="mt-4 pt-3.5 border-t border-[#F1F1EC] flex items-center justify-between text-[12px]">
-                <div className="flex items-center gap-3 text-[#525258]">
-                  <span className="inline-flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-[#8E8E93]" />
-                    {p.slaTargetHours}h SLA
-                  </span>
-                  <span>{p.activeDeployments} active</span>
-                </div>
-                <div className="font-semibold text-[#18181A] tabular-nums">
-                  {formatCurrency(p.unitPriceUsd)}
-                  <span className="text-[10.5px] font-normal text-[#8E8E93]"> /mo</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <GridPage>
+        <DataGrid
+          title="Products & Solutions"
+          columns={columns}
+          rows={filtered}
+          getRowId={(r) => r.id}
+          exportName="products"
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search SKU, solution, vendor..."
+          onRefresh={() => void loadItems()}
+          onOpen={(r) => openEdit(r)}
+          actions={[
+            { label: "New", onClick: openCreate, hidden: !can("products:write") },
+            { label: "Open", needsSelection: true, onClick: (r) => r && openEdit(r) },
+            { label: "Delete", needsSelection: true, tone: "danger", hidden: !can("products:delete"), onClick: (r) => void deleteRow(r) },
+          ]}
+          filters={
+            <GridSelect
+              label="Category"
+              value={catFilter}
+              onChange={setCatFilter}
+              options={["ALL", ...categories].map((c) => ({ value: c, label: c === "ALL" ? "All categories" : c }))}
+            />
+          }
+          detail={(r) => (
+            <DetailList
+              items={[
+                ["Description", r.description],
+                ["Vendor", r.vendorName],
+                ["Partner", r.partnerName],
+                ["Pricing", `${formatCurrency(r.unitPriceUsd)} · ${r.pricingModel}`],
+                ["SLA Target", `${r.slaTargetHours} hours`],
+                ["Active Deployments", String(r.activeDeployments)],
+              ]}
+            />
+          )}
+        />
+      </GridPage>
 
       <RecordModal
         open={modalOpen}

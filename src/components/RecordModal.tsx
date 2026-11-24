@@ -84,14 +84,14 @@ export function RecordModal({
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className="relative z-10 w-full max-w-xl h-full bg-white border-l border-[#E8E8E2] shadow-2xl flex flex-col">
+      <div className="relative z-10 w-full max-w-xl h-full bg-white border-l border-[#D9DEE3] shadow-2xl flex flex-col">
         {/* Header */}
-        <div className="px-6 py-5 bg-[#F3F3EB] border-b border-[#E8E8DF] flex items-start justify-between gap-4">
+        <div className="px-6 py-5 bg-[#EEF1F4] border-b border-[#D9DEE3] flex items-start justify-between gap-4">
           <div className="min-w-0">
             {subtitle && (
-              <div className="font-mono text-[11px] text-[#78787E] mb-1">{subtitle}</div>
+              <div className="font-mono text-[11px] text-[#6B7280] mb-1">{subtitle}</div>
             )}
-            <h2 className="text-[18px] font-semibold text-[#18181A] truncate">{title}</h2>
+            <h2 className="text-[18px] font-semibold text-[#2B3036] truncate">{title}</h2>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {canDelete && onDelete && (
@@ -107,7 +107,7 @@ export function RecordModal({
             <button
               type="button"
               onClick={onClose}
-              className="p-2 rounded-lg text-[#54545A] hover:bg-black/5 transition-colors"
+              className="p-2 rounded-lg text-[#4B5563] hover:bg-black/5 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -120,8 +120,8 @@ export function RecordModal({
 
           {/* Comments Thread (when editing existing record) */}
           {entityType && entityId && (
-            <div className="pt-5 border-t border-[#ECECE7]">
-              <h3 className="text-[13px] font-semibold text-[#18181A] mb-3">
+            <div className="pt-5 border-t border-[#D9DEE3]">
+              <h3 className="text-[13px] font-semibold text-[#2B3036] mb-3">
                 Activity & Notes ({comments.length})
               </h3>
               <form onSubmit={submitComment} className="flex gap-2 mb-4">
@@ -130,12 +130,12 @@ export function RecordModal({
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
                   placeholder="Add an engineering note or customer update..."
-                  className="flex-1 rounded-[10px] border border-[#E2E2DA] px-3 py-2 text-[13px] focus:outline-none focus:border-[#18181A]"
+                  className="flex-1 rounded-sm border border-[#C9D0D7] px-3 py-2 text-[13px] focus:outline-none focus:border-[#1668AC]"
                 />
                 <button
                   type="submit"
                   disabled={sendingComment || !commentText.trim()}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[10px] bg-[#18181A] text-white text-[12.5px] font-medium disabled:opacity-40"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-sm bg-[#1668AC] text-white text-[12.5px] font-medium disabled:opacity-40"
                 >
                   <Send className="w-3.5 h-3.5" />
                   Post
@@ -143,12 +143,12 @@ export function RecordModal({
               </form>
               <div className="space-y-3">
                 {comments.length === 0 ? (
-                  <p className="text-[12px] text-[#8E8E93]">No notes logged yet.</p>
+                  <p className="text-[12px] text-[#6B7280]">No notes logged yet.</p>
                 ) : (
                   comments.map((c) => (
                     <div
                       key={c.id}
-                      className="rounded-xl border border-[#ECECE7] bg-[#FAF9F5] p-3"
+                      className="rounded-sm border border-[#D9DEE3] bg-[#F6F7F8] p-3"
                     >
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <div className="flex items-center gap-2">
@@ -158,15 +158,15 @@ export function RecordModal({
                           >
                             {getInitials(c.authorName || "User")}
                           </span>
-                          <span className="text-[12px] font-medium text-[#18181A]">
+                          <span className="text-[12px] font-medium text-[#2B3036]">
                             {c.authorName || "Team Member"}
                           </span>
                         </div>
-                        <span className="text-[11px] text-[#8E8E93]">
+                        <span className="text-[11px] text-[#6B7280]">
                           {formatDateTime(c.createdAt)}
                         </span>
                       </div>
-                      <p className="text-[12.5px] text-[#3F3F44] leading-relaxed">{c.body}</p>
+                      <p className="text-[12.5px] text-[#374151] leading-relaxed">{c.body}</p>
                     </div>
                   ))
                 )}

@@ -4,7 +4,9 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, BellPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
-import { HeaderAnalyticsBand } from "@/components/HeaderAnalyticsBand";
+import { DataGrid, GridPage, GridSelect, type GridColumn } from "@/components/grid/DataGrid";
+import { DetailList } from "@/components/grid/DetailPane";
+import { Mono, Pill, SegmentProgress, severityTone, stageRatio } from "@/components/grid/cells";
 import { RecordModal } from "@/components/RecordModal";
 import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
@@ -179,120 +181,100 @@ export default function ServicesPage() {
     }
   };
 
+  const daysLeft = (end: string) => Math.ceil((new Date(end).getTime() - Date.now()) / 86_400_000);
+
+  const deleteRow = async (row: ServiceRow | null) => {
+    if (!row || !window.confirm(`Delete ${row.serviceNumber}?`)) return;
+    const res = await fetch(`/api/services/${row.id}`, { method: "DELETE" });
+    if (res.ok) {
+      notify("Service number removed");
+      await Promise.all([loadItems(), refreshLookups()]);
+    } else {
+      notify("Missing permission to delete", "error");
+    }
+  };
+
+  const columns: GridColumn<ServiceRow>[] = [
+    { key: "serviceNumber", header: "Service Number", width: 140, render: (r) => <Mono>{r.serviceNumber}</Mono> },
+    { key: "title", header: "Summary", width: 240, wrap: true },
+    { key: "category", header: "Category", width: 140 },
+    { key: "customerName", header: "Customer", width: 170 },
+    { key: "siteLocation", header: "Location", width: 150 },
+    { key: "slaTier", header: "SLA Tier", width: 100 },
+    {
+      key: "status",
+      header: "Status",
+      width: 130,
+      render: (r) => (
+        <Pill tone={r.status === "Active" ? "normal" : r.status === "Expiring Soon" ? "high" : r.status === "Expired" || r.status === "Suspended" ? "critical" : "low"}>
+          {r.status}
+        </Pill>
+      ),
+    },
+    { key: "monthlyFeeUsd", header: "Monthly Fee", width: 120, align: "right", render: (r) => formatCurrency(r.monthlyFeeUsd) },
+    {
+      key: "endDate",
+      header: "Contract End",
+      width: 130,
+      render: (r) => {
+        const d = daysLeft(r.endDate);
+        return (
+          <span className={cn("inline-flex items-center gap-1.5", d >= 0 && d <= 30 && "text-[#B45309] font-medium")}>
+            {formatShortDate(r.endDate)}
+            {d >= 0 && d <= 30 && <AlertTriangle className="w-3.5 h-3.5" />}
+          </span>
+        );
+      },
+    },
+    { key: "picName", header: "Owner", width: 150 },
+  ];
+
   return (
     <AppShell>
-      <HeaderAnalyticsBand
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search SRV number, circuit, customer, SLA tier..."
-        showFilters={showFilters}
-        onToggleFilters={() => setShowFilters((s) => !s)}
-        onlyMine={onlyMine}
-        onToggleOnlyMine={() => setOnlyMine((m) => !m)}
-        ctaLabel={can("services:write") ? "Add service number" : undefined}
-        onCtaClick={openCreate}
-        barTitle="Contract coverage"
-        gaugePct={items.length > 0 ? Math.round((activeCount / items.length) * 100) : 100}
-        gaugeLabel="Active service lines"
-        kpi1Value={expiringCount}
-        kpi1Label="Expiring within 30d"
-        kpi1Href="/events"
-        kpi2Value={formatCurrency(totalMrr)}
-        kpi2Label="Active monthly MRR"
-        kpi2Href="/reports"
-        filterBar={
-          <div className="flex flex-wrap gap-2">
-            {["ALL", "Active", "Provisioning", "Expiring Soon", "Suspended", "Expired"].map(
-              (st) => (
-                <button
-                  key={st}
-                  onClick={() => setStatusFilter(st)}
-                  className={`px-3 py-1 rounded-full text-[12px] font-medium border ${
-                    statusFilter === st
-                      ? "bg-[#18181A] text-white border-[#18181A]"
-                      : "bg-white text-[#525258] border-[#E4E4DC]"
-                  }`}
-                >
-                  {st === "ALL" ? "All statuses" : st}
-                </button>
-              )
-            )}
-          </div>
-        }
-      />
-
-      <div className="px-6 lg:px-8 py-6">
-        <div className="rounded-[14px] border border-[#ECECE7] bg-white overflow-x-auto">
-          <table className="w-full text-left text-[13px]">
-            <thead className="bg-[#FAF9F5] border-b border-[#ECECE7] text-[12px] text-[#78787E]">
-              <tr>
-                <th className="py-3 px-4 font-medium">Service Number</th>
-                <th className="py-3 px-4 font-medium">Service Scope</th>
-                <th className="py-3 px-4 font-medium">Customer</th>
-                <th className="py-3 px-4 font-medium">SLA Tier</th>
-                <th className="py-3 px-4 font-medium">Status</th>
-                <th className="py-3 px-4 font-medium">MRR</th>
-                <th className="py-3 px-4 font-medium">Contract End</th>
-                <th className="py-3 px-4 font-medium">PIC</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#F1F1EC]">
-              {filtered.map((srv) => {
-                const daysLeft = Math.ceil(
-                  (new Date(srv.endDate).getTime() - Date.now()) / 86400_000
-                );
-                return (
-                  <tr
-                    key={srv.id}
-                    onClick={() => openEdit(srv)}
-                    className="hover:bg-[#FAF9F5] cursor-pointer transition-colors"
-                  >
-                    <td className="py-3.5 px-4 font-mono text-[12px] font-medium text-[#18181A]">
-                      {srv.serviceNumber}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <div className="font-medium text-[#18181A]">{srv.title}</div>
-                      <div className="text-[11.5px] text-[#8E8E93]">{srv.category}</div>
-                    </td>
-                    <td className="py-3.5 px-4 text-[#525258]">{srv.customerName || "—"}</td>
-                    <td className="py-3.5 px-4">
-                      <span className="px-2 py-0.5 rounded-md border border-[#E5E5DF] text-[11.5px] text-[#3F3F44]">
-                        {srv.slaTier}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={cn(
-                          "px-2 py-0.5 rounded-full text-[11px] font-medium",
-                          srv.status === "Active"
-                            ? "bg-emerald-50 text-emerald-700"
-                            : srv.status === "Expiring Soon"
-                              ? "bg-amber-50 text-amber-800"
-                              : "bg-[#F4F4F1] text-[#525258]"
-                        )}
-                      >
-                        {srv.status}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 font-medium tabular-nums">
-                      {formatCurrency(srv.monthlyFeeUsd)}
-                    </td>
-                    <td className="py-3.5 px-4 text-[12px]">
-                      <div className="flex items-center gap-1.5">
-                        <span>{formatShortDate(srv.endDate)}</span>
-                        {daysLeft <= 30 && daysLeft >= 0 && (
-                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4 text-[#525258]">{srv.picName || "—"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <GridPage>
+        <DataGrid
+          title="Service Numbers"
+          columns={columns}
+          rows={filtered}
+          getRowId={(r) => r.id}
+          exportName="service-numbers"
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search SRV number, customer, SLA..."
+          onRefresh={() => void loadItems()}
+          onOpen={(r) => openEdit(r)}
+          actions={[
+            { label: "New", onClick: openCreate, hidden: !can("services:write") },
+            { label: "Open", needsSelection: true, onClick: (r) => r && openEdit(r) },
+            { label: "Delete", needsSelection: true, tone: "danger", hidden: !can("services:delete"), onClick: (r) => void deleteRow(r) },
+            { label: "My Items", active: onlyMine, onClick: () => setOnlyMine((m) => !m) },
+          ]}
+          filters={
+            <GridSelect
+              label="Status"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={["ALL", "Active", "Provisioning", "Expiring Soon", "Suspended", "Expired"].map((s) => ({
+                value: s,
+                label: s === "ALL" ? "All statuses" : s,
+              }))}
+            />
+          }
+          detail={(r) => (
+            <DetailList
+              items={[
+                ["Customer", r.customerName],
+                ["Site Location", r.siteLocation],
+                ["Product", r.productName],
+                ["Partner", r.partnerName],
+                ["Contract", `${formatShortDate(r.startDate)} – ${formatShortDate(r.endDate)}`],
+                ["Days Remaining", String(daysLeft(r.endDate))],
+                ["Notes", r.notes],
+              ]}
+            />
+          )}
+        />
+      </GridPage>
 
       <RecordModal
         open={modalOpen}
@@ -436,7 +418,7 @@ export default function ServicesPage() {
             <button
               type="button"
               onClick={() => router.push(`/events?ref=${editing.serviceNumber}`)}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-[10px] border border-[#E2E2DA] py-2 text-[12.5px] font-medium text-[#18181A] hover:bg-[#FAF9F5]"
+              className="w-full inline-flex items-center justify-center gap-2 rounded-sm border border-[#C9D0D7] py-2 text-[12.5px] font-medium text-[#2B3036] hover:bg-[#F6F7F8]"
             >
               <BellPlus className="w-4 h-4" />
               Schedule Renewal Email Reminder for {editing.serviceNumber}

@@ -2,13 +2,14 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
-import { HeaderAnalyticsBand } from "@/components/HeaderAnalyticsBand";
-import { KanbanBoard, KanbanCardItem } from "@/components/KanbanBoard";
+import { DataGrid, GridPage, GridSelect, type GridColumn } from "@/components/grid/DataGrid";
+import { DetailList } from "@/components/grid/DetailPane";
+import { Mono, Pill, SegmentProgress, severityTone, stageRatio } from "@/components/grid/cells";
 import { RecordModal } from "@/components/RecordModal";
 import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ToastProvider";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatShortDate } from "@/lib/utils";
 
 const STAGES = ["Contacted", "Negotiation", "Offer Sent", "Deal Closed"] as const;
 
@@ -116,7 +117,7 @@ export default function PipelinePage() {
     setModalOpen(true);
   };
 
-  const openEdit = (card: KanbanCardItem) => {
+  const openEdit = (card: { id: number }) => {
     const found = items.find((i) => i.id === card.id);
     if (!found) return;
     setEditing(found);
@@ -197,78 +198,84 @@ export default function PipelinePage() {
     }
   };
 
-  const cards: KanbanCardItem[] = filtered.map((d) => ({
-    id: d.id,
-    code: d.dealCode,
-    title: d.title,
-    description: d.description,
-    stage: d.stage,
-    date: d.expectedCloseDate,
-    customerName: d.customerName,
-    customerAddress: d.customerAddress,
-    customerEmail: d.customerEmail,
-    assigneeName: d.assigneeName,
-    assigneeJobTitle: d.assigneeJobTitle,
-    assigneeAvatarColor: d.assigneeAvatarColor,
-    commentCount: d.commentCount,
-    attachmentCount: d.attachmentCount,
-    badgeText: `${formatCurrency(d.dealValueUsd)} · ${d.probabilityPct}%`,
-  }));
+  const nextStage = (status: string) => {
+    const idx = STAGES.indexOf(status as (typeof STAGES)[number]);
+    return idx >= 0 && idx < STAGES.length - 1 ? STAGES[idx + 1] : null;
+  };
 
-  const primeCard = items.find((i) => i.title === "Prime Estate");
+  const deleteRow = async (row: PipelineDealRow | null) => {
+    if (!row || !window.confirm(`Delete ${row.dealCode}?`)) return;
+    const res = await fetch(`/api/pipeline/${row.id}`, { method: "DELETE" });
+    if (res.ok) {
+      notify("Deal deleted");
+      await loadItems();
+    } else {
+      notify("Missing permission to delete", "error");
+    }
+  };
+
+  const columns: GridColumn<PipelineDealRow>[] = [
+    { key: "dealCode", header: "Deal", width: 120, render: (r) => <Mono>{r.dealCode}</Mono> },
+    { key: "customerName", header: "Customer", width: 170 },
+    { key: "title", header: "Summary", width: 260, wrap: true },
+    { key: "stage", header: "Stage", width: 120 },
+    { key: "progress", header: "Progress", width: 100, value: (r) => STAGES.indexOf(r.stage as (typeof STAGES)[number]), render: (r) => <SegmentProgress ratio={stageRatio(STAGES, r.stage)} /> },
+    { key: "dealValueUsd", header: "Value", width: 120, align: "right", render: (r) => formatCurrency(r.dealValueUsd) },
+    { key: "probabilityPct", header: "Win %", width: 80, align: "right", render: (r) => `${r.probabilityPct}%` },
+    { key: "assigneeName", header: "Owner", width: 150, value: (r) => r.assigneeName ?? "Unassigned" },
+    { key: "expectedCloseDate", header: "Expected Close", width: 120, value: (r) => r.expectedCloseDate ?? "", render: (r) => formatShortDate(r.expectedCloseDate) },
+  ];
 
   return (
     <AppShell>
-      <HeaderAnalyticsBand
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search pipeline deal or customer..."
-        sortDir={sortDir}
-        onToggleSort={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-        showFilters={showFilters}
-        onToggleFilters={() => setShowFilters((s) => !s)}
-        onlyMine={onlyMine}
-        onToggleOnlyMine={() => setOnlyMine((m) => !m)}
-        ctaLabel={can("pipeline:write") ? "Add deal" : undefined}
-        onCtaClick={openCreate}
-        barTitle="Pipeline intake"
-        gaugePct={winPct || 68}
-        gaugeLabel="Successful deals"
-        kpi1Value={activeCount}
-        kpi1Label="Deals in progress"
-        kpi1Href="/poc"
-        kpi2Value={formatCurrency(closedValue)}
-        kpi2Label="Closed managed contracts"
-        kpi2Href="/services"
-        filterBar={
-          <div className="flex flex-wrap items-center gap-2">
-            {["ALL", ...STAGES].map((st) => (
-              <button
-                key={st}
-                onClick={() => setStageFilter(st)}
-                className={`px-3 py-1 rounded-full text-[12px] font-medium border transition-colors ${
-                  stageFilter === st
-                    ? "bg-[#18181A] text-white border-[#18181A]"
-                    : "bg-white text-[#525258] border-[#E4E4DC]"
-                }`}
-              >
-                {st === "ALL" ? "All stages" : st}
-              </button>
-            ))}
-          </div>
-        }
-      />
-
-      <div className="px-6 lg:px-8 py-6">
-        <KanbanBoard
-          columns={[...STAGES]}
-          items={cards}
-          defaultSelectedId={primeCard?.id ?? cards[0]?.id}
-          canEdit={can("pipeline:write")}
-          onMoveStage={handleMoveStage}
-          onOpenDetail={openEdit}
+      <GridPage>
+        <DataGrid
+          title="Pipeline"
+          columns={columns}
+          rows={filtered}
+          getRowId={(r) => r.id}
+          exportName="pipeline"
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search deal or customer..."
+          onRefresh={() => void loadItems()}
+          onOpen={(r) => openEdit(r)}
+          actions={[
+            { label: "New", onClick: openCreate, hidden: !can("pipeline:write") },
+            { label: "Open", needsSelection: true, onClick: (r) => r && openEdit(r) },
+            {
+              label: "Advance",
+              needsSelection: true,
+              hidden: !can("pipeline:write"),
+              onClick: (r) => {
+                const n = r && nextStage(r.stage);
+                if (r && n) void handleMoveStage(r.id, n);
+              },
+            },
+            { label: "Delete", needsSelection: true, tone: "danger", hidden: !can("pipeline:delete"), onClick: (r) => void deleteRow(r) },
+            { label: "My Items", active: onlyMine, onClick: () => setOnlyMine((m) => !m) },
+          ]}
+          filters={
+            <GridSelect
+              label="Stage"
+              value={stageFilter}
+              onChange={setStageFilter}
+              options={[{ value: "ALL", label: "All stages" }, ...STAGES.map((s) => ({ value: s, label: s }))]}
+            />
+          }
+          detail={(r) => (
+            <DetailList
+              items={[
+                ["Customer", r.customerName],
+                ["Customer Email", r.customerEmail],
+                ["Owner", r.assigneeName ?? "Unassigned"],
+                ["Weighted Value", formatCurrency(Math.round((r.dealValueUsd * r.probabilityPct) / 100))],
+                ["Description", r.description],
+              ]}
+            />
+          )}
         />
-      </div>
+      </GridPage>
 
       <RecordModal
         open={modalOpen}

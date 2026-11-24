@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { LayoutGrid, Table2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { HeaderAnalyticsBand } from "@/components/HeaderAnalyticsBand";
-import { KanbanBoard, KanbanCardItem } from "@/components/KanbanBoard";
+import { DataGrid, GridPage, GridSelect, type GridColumn } from "@/components/grid/DataGrid";
+import { DetailList } from "@/components/grid/DetailPane";
+import { Mono, Pill, SegmentProgress, severityTone, stageRatio } from "@/components/grid/cells";
 import { RecordModal } from "@/components/RecordModal";
 import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
@@ -44,7 +44,6 @@ export default function CorrectivePage() {
   const { user, lookups, can, refreshLookups } = useAuth();
   const { notify } = useToast();
   const [items, setItems] = useState<CorrectiveRow[]>([]);
-  const [view, setView] = useState<"board" | "table">("board");
   const [search, setSearch] = useState("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [showFilters, setShowFilters] = useState(false);
@@ -215,143 +214,107 @@ export default function CorrectivePage() {
     }
   };
 
-  const cards: KanbanCardItem[] = filtered.map((c) => ({
-    id: c.id,
-    code: c.ticketCode,
-    title: c.title,
-    description: c.description,
-    stage: c.status,
-    date: c.dueDate,
-    customerName: c.customerName,
-    customerAddress: c.customerAddress,
-    customerEmail: c.customerEmail,
-    extraLine: c.serviceCode ? `Service: ${c.serviceCode}` : null,
-    assigneeName: c.assigneeName,
-    assigneeJobTitle: c.assigneeJobTitle,
-    assigneeAvatarColor: c.assigneeAvatarColor,
-    commentCount: c.commentCount,
-    attachmentCount: c.attachmentCount,
-    badgeText: c.severity,
-    badgeTone:
-      c.severity === "Critical"
-        ? "critical"
-        : c.severity === "High"
-          ? "warning"
-          : "neutral",
-  }));
+  const nextStage = (status: string) => {
+    const idx = STAGES.indexOf(status as (typeof STAGES)[number]);
+    return idx >= 0 && idx < STAGES.length - 1 ? STAGES[idx + 1] : null;
+  };
+
+  const deleteRow = async (row: CorrectiveRow | null) => {
+    if (!row || !window.confirm(`Delete ${row.ticketCode}?`)) return;
+    const res = await fetch(`/api/maintenance/corrective/${row.id}`, { method: "DELETE" });
+    if (res.ok) {
+      notify("Corrective ticket deleted");
+      await Promise.all([loadItems(), refreshLookups()]);
+    } else {
+      notify("Missing permission to delete", "error");
+    }
+  };
+
+  const columns: GridColumn<CorrectiveRow>[] = [
+    { key: "ticketCode", header: "Incident", width: 120, render: (r) => <Mono>{r.ticketCode}</Mono> },
+    {
+      key: "severity",
+      header: "Priority",
+      width: 100,
+      value: (r) => SEVERITIES.indexOf(r.severity as (typeof SEVERITIES)[number]),
+      render: (r) => <Pill tone={severityTone(r.severity)}>{r.severity}</Pill>,
+    },
+    { key: "customerName", header: "Customer", width: 170 },
+    { key: "title", header: "Summary", width: 280, wrap: true },
+    { key: "status", header: "Status", width: 110 },
+    {
+      key: "progress",
+      header: "Progress",
+      width: 100,
+      value: (r) => STAGES.indexOf(r.status as (typeof STAGES)[number]),
+      render: (r) => <SegmentProgress ratio={stageRatio(STAGES, r.status)} />,
+    },
+    { key: "serviceCode", header: "Service", width: 130 },
+    { key: "assigneeName", header: "Owner", width: 150, value: (r) => r.assigneeName ?? "Unassigned" },
+    { key: "dueDate", header: "SLA Due", width: 110, value: (r) => r.dueDate ?? "", render: (r) => formatShortDate(r.dueDate) },
+    { key: "commentCount", header: "Notes", width: 70, align: "right" },
+  ];
 
   return (
     <AppShell>
-      <HeaderAnalyticsBand
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search CM code, incident, customer, service ID..."
-        sortDir={sortDir}
-        onToggleSort={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-        showFilters={showFilters}
-        onToggleFilters={() => setShowFilters((f) => !f)}
-        onlyMine={onlyMine}
-        onToggleOnlyMine={() => setOnlyMine((m) => !m)}
-        ctaLabel={can("maintenance:write") ? "Log incident" : undefined}
-        onCtaClick={openCreate}
-        barTitle="Incident flow"
-        gaugePct={slaRate}
-        gaugeLabel="SLA adherence"
-        kpi1Value={openCount}
-        kpi1Label="Open corrective tickets"
-        kpi1Href="/events"
-        kpi2Value={resolvedCount}
-        kpi2Label="Resolved this cycle"
-        kpi2Href="/reports"
-        filterBar={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              {["ALL", ...SEVERITIES].map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setSevFilter(s)}
-                  className={`px-3 py-1 rounded-full text-[12px] font-medium border transition-colors ${
-                    sevFilter === s
-                      ? "bg-[#18181A] text-white border-[#18181A]"
-                      : "bg-white text-[#525258] border-[#E4E4DC]"
-                  }`}
-                >
-                  {s === "ALL" ? "All severities" : s}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-1 bg-white border border-[#E4E4DC] rounded-lg p-0.5">
-              <button
-                onClick={() => setView("board")}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-medium ${
-                  view === "board" ? "bg-[#18181A] text-white" : "text-[#525258]"
-                }`}
-              >
-                <LayoutGrid className="w-3.5 h-3.5" /> Board
-              </button>
-              <button
-                onClick={() => setView("table")}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-medium ${
-                  view === "table" ? "bg-[#18181A] text-white" : "text-[#525258]"
-                }`}
-              >
-                <Table2 className="w-3.5 h-3.5" /> Table
-              </button>
-            </div>
-          </div>
-        }
-      />
-
-      <div className="px-6 lg:px-8 py-6">
-        {view === "board" ? (
-          <KanbanBoard
-            columns={[...STAGES]}
-            items={cards}
-            canEdit={can("maintenance:write")}
-            onMoveStage={handleMoveStage}
-            onOpenDetail={(card) => openEditById(card.id)}
-          />
-        ) : (
-          <div className="rounded-[14px] border border-[#ECECE7] overflow-x-auto bg-white">
-            <table className="w-full text-left text-[13px]">
-              <thead className="bg-[#FAF9F5] border-b border-[#ECECE7] text-[#78787E] text-[12px]">
-                <tr>
-                  <th className="py-3 px-4 font-medium">Ticket</th>
-                  <th className="py-3 px-4 font-medium">Incident</th>
-                  <th className="py-3 px-4 font-medium">Customer / Service</th>
-                  <th className="py-3 px-4 font-medium">Severity</th>
-                  <th className="py-3 px-4 font-medium">Status</th>
-                  <th className="py-3 px-4 font-medium">Assignee</th>
-                  <th className="py-3 px-4 font-medium">SLA Due</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F1F1EC]">
-                {filtered.map((row) => (
-                  <tr
-                    key={row.id}
-                    onClick={() => openEditById(row.id)}
-                    className="hover:bg-[#FAF9F5] cursor-pointer transition-colors"
-                  >
-                    <td className="py-3 px-4 font-mono text-[12px]">{row.ticketCode}</td>
-                    <td className="py-3 px-4 font-medium text-[#18181A]">{row.title}</td>
-                    <td className="py-3 px-4 text-[#525258]">
-                      {row.customerName || "—"} {row.serviceCode ? `· ${row.serviceCode}` : ""}
-                    </td>
-                    <td className="py-3 px-4">{row.severity}</td>
-                    <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded-full text-[11px] bg-[#F4F4F1] text-[#18181A]">
-                        {row.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-[#525258]">{row.assigneeName || "Unassigned"}</td>
-                    <td className="py-3 px-4 text-[#78787E]">{formatShortDate(row.dueDate)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <GridPage>
+        <DataGrid
+          title="Corrective Maintenance"
+          columns={columns}
+          rows={filtered}
+          getRowId={(r) => r.id}
+          exportName="corrective-maintenance"
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search incident, customer, service..."
+          onRefresh={() => void loadItems()}
+          onOpen={(r) => openEditById(r.id)}
+          rowTone={(r) => (r.severity === "Critical" && r.status !== "Resolved" ? "critical" : undefined)}
+          actions={[
+            { label: "New", onClick: openCreate, hidden: !can("maintenance:write") },
+            { label: "Open", needsSelection: true, onClick: (r) => r && openEditById(r.id) },
+            {
+              label: "Advance",
+              needsSelection: true,
+              hidden: !can("maintenance:write"),
+              onClick: (r) => {
+                const n = r && nextStage(r.status);
+                if (r && n) void handleMoveStage(r.id, n);
+              },
+            },
+            {
+              label: "Resolve",
+              needsSelection: true,
+              hidden: !can("maintenance:write"),
+              onClick: (r) => r && r.status !== "Resolved" && void handleMoveStage(r.id, "Resolved"),
+            },
+            { label: "Delete", needsSelection: true, tone: "danger", hidden: !can("maintenance:delete"), onClick: (r) => void deleteRow(r) },
+            { label: "My Items", active: onlyMine, onClick: () => setOnlyMine((m) => !m) },
+          ]}
+          filters={
+            <GridSelect
+              label="Severity"
+              value={sevFilter}
+              onChange={setSevFilter}
+              options={[{ value: "ALL", label: "All severities" }, ...SEVERITIES.map((s) => ({ value: s, label: s }))]}
+            />
+          }
+          detail={(r) => (
+            <DetailList
+              items={[
+                ["Customer", r.customerName],
+                ["Customer Email", r.customerEmail],
+                ["Customer Address", r.customerAddress],
+                ["Service Number", r.serviceCode],
+                ["Description", r.description],
+                ["Assigned Engineer", r.assigneeName ? `${r.assigneeName}${r.assigneeJobTitle ? ` · ${r.assigneeJobTitle}` : ""}` : "Unassigned"],
+                ["Root Cause", r.rootCause],
+                ["Resolution", r.resolutionNotes],
+              ]}
+            />
+          )}
+        />
+      </GridPage>
 
       <RecordModal
         open={modalOpen}
