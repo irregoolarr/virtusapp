@@ -6,6 +6,9 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 
+// Set NEXT_PUBLIC_DEMO_LOGIN="false" (e.g. on a public Vercel URL) to hide the one-click demo sign-in.
+const SHOW_DEMO_LOGINS = process.env.NEXT_PUBLIC_DEMO_LOGIN !== "false";
+
 const DEMO_ACCOUNTS = [
   {
     name: "Iona Rollins",
@@ -255,6 +258,7 @@ export default function LoginPage() {
               </div>
             )}
 
+            {SHOW_DEMO_LOGINS && (
             <button
               type="button"
               onClick={() => setShowDemoProfiles((prev) => !prev)}
@@ -271,8 +275,9 @@ export default function LoginPage() {
                 }`}
               />
             </button>
+            )}
 
-            {showDemoProfiles && (
+            {SHOW_DEMO_LOGINS && showDemoProfiles && (
               <div className="rounded-[10px] border border-[#DDD5C9] bg-white p-2 space-y-1.5">
                 <div className="px-2 pt-1 pb-0.5 text-[11px] font-medium text-[#6E6860]">
                   Password for all seeded roles:{" "}

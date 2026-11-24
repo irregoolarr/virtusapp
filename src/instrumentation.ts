@@ -1,5 +1,7 @@
 export async function register() {
-  if (process.env.NEXT_RUNTIME === "nodejs") {
+  // On Vercel (serverless) the in-process timer can't run reliably;
+  // reminders are triggered via /api/cron/events instead.
+  if (process.env.NEXT_RUNTIME === "nodejs" && !process.env.VERCEL) {
     const g = globalThis as unknown as {
       __virtusSchedulerStarted?: boolean;
       __virtusSchedulerLastBeat?: string;

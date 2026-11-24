@@ -59,7 +59,7 @@ async function seed() {
     return;
   }
 
-  const demoPasswordHash = hashPassword("virtus123");
+  const demoPasswordHash = hashPassword(process.env.SEED_PASSWORD || "virtus123");
 
   // 2. Team Users
   const insertedUsers = await db

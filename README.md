@@ -167,9 +167,56 @@ pnpm db:push      # Run if src/db/schema.ts changed
 
 Then restart the app (`pnpm dev`, or rebuild and restart with `pnpm build && pnpm start` in production). Your `.env.local` configuration and PostgreSQL data are not tracked in git and will remain untouched across `git pull`.
 
+## Deploying to Vercel (Development / Testing)
+
+The repo is Vercel-ready. Vercel builds it from GitHub: every push to `main` updates the **Production** URL, and every other branch or pull request gets its own **Preview** URL for testing fixes.
+
+### 1. Import the GitHub repo
+1. Sign in at [vercel.com](https://vercel.com) with your GitHub account.
+2. **Add New → Project →** import `irregoolarr/virtusapp`. Framework (Next.js), build command and pnpm are detected automatically. Don't deploy yet: add the database first.
+
+### 2. Add a cloud PostgreSQL database
+Vercel can't reach `localhost`. In the project go to **Storage → Create Database → Neon (Postgres)** (free tier) and connect it to the project. This injects `DATABASE_URL` into all environments. Supabase or Railway also work; use their **pooled** connection string with `sslmode=require`.
+
+### 3. Set environment variables
+**Project → Settings → Environment Variables:**
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | Added by Neon (or paste your pooled URL) |
+| `SESSION_SECRET` | Random string, e.g. `openssl rand -hex 32` |
+| `CRON_SECRET` | Random string, e.g. `openssl rand -hex 32` |
+| `NEXT_PUBLIC_DEMO_LOGIN` | `false` to hide one-click demo sign-in on the public URL |
+| `SMTP_*` | Optional. Can also be set later in the app's **Settings** page |
+
+### 4. Create tables and seed data (once per database)
+Run this from your machine, pointing at the cloud database:
+```bash
+DATABASE_URL="postgresql://...neon.tech/neondb?sslmode=require" \
+SEED_PASSWORD="choose-a-strong-password" \
+pnpm db:setup        # = drizzle-kit push + seed
+```
+> The repo is public and the default demo password is `virtus123`. Use `SEED_PASSWORD` for any internet-reachable deployment.
+
+Then click **Deploy** (or **Redeploy**). Open `https://<project>.vercel.app/login`.
+
+### 5. Scheduled reminders on Vercel
+Serverless functions can't keep the 60-second in-process timer alive. On Vercel it's disabled and reminders run through `GET /api/cron/events` (requires `Authorization: Bearer $CRON_SECRET`):
+- **Vercel Cron** (`vercel.json`): daily at 01:00 UTC. This is the Hobby-plan limit; on Pro you can change the schedule to `*/5 * * * *`.
+- **GitHub Actions** (`.github/workflows/reminder-cron.yml`): every 15 minutes. Enable it by adding repo secrets **Settings → Secrets and variables → Actions**: `APP_URL` (e.g. `https://virtusapp.vercel.app`) and `CRON_SECRET` (same value as on Vercel).
+- **Run Due Reminders Now** / **Send Email Now** in the Events page work anytime.
+
+### Dev workflow
+```bash
+git checkout -b fix/my-change    # work locally with pnpm dev
+git push -u origin fix/my-change # Vercel posts a Preview URL on the branch/PR
+# test on the Preview URL → merge to main → Production redeploys automatically
+```
+Tip: give the **Preview** environment its own `DATABASE_URL` (e.g. a Neon branch) so testing never touches production data. Schema changes: re-run `DATABASE_URL=... pnpm db:push` against each cloud database.
+
 ## Demo Login Profiles
 
-All seeded users use password **`virtus123`** (or click any profile card on `/login`):
+All seeded users use password **`virtus123`** (or the `SEED_PASSWORD` you seeded with). Locally you can also click any profile card on `/login`:
 
 - `iona@virtusms.io` — **Super Admin**
 - `sandra@virtusms.io` — **Service Manager**
