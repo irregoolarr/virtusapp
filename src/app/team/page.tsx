@@ -46,7 +46,7 @@ interface PermDef {
 export default function TeamRbacPage() {
   const { user, can, refreshAuth, refreshLookups } = useAuth();
   const { notify } = useToast();
-  const [tab, setTab] = useState<"users" | "rbac">("users");
+  const [tab, setTab] = useState<"members" | "roles" | "scopes" | "groups">("members");
   const [team, setTeam] = useState<TeamUserRow[]>([]);
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [perms, setPerms] = useState<PermDef[]>([]);
@@ -272,20 +272,56 @@ export default function TeamRbacPage() {
     { key: "phone", header: "Phone", width: 150 },
   ];
 
+  const roleColumns: GridColumn<RoleRow>[] = [
+    { key: "name", header: "Role", width: 180 },
+    { key: "slug", header: "Key", width: 160 },
+    { key: "description", header: "Description", width: 360, wrap: true },
+    { key: "memberCount", header: "Members", width: 90, align: "right" },
+    { key: "permissionCount", header: "Scopes", width: 90, align: "right", value: (r) => r.permissions.length },
+    {
+      key: "isSystem",
+      header: "Type",
+      width: 100,
+      value: (r) => (r.isSystem ? "System" : "Custom"),
+      render: (r) => <Pill tone={r.isSystem ? "low" : "normal"}>{r.isSystem ? "System" : "Custom"}</Pill>,
+    },
+  ];
+
+  type GroupRow = { id: string; department: string; members: TeamUserRow[] };
+  const groups: GroupRow[] = Object.values(
+    team.reduce<Record<string, GroupRow>>((acc, u) => {
+      const key = u.department || "Unassigned";
+      (acc[key] ??= { id: key, department: key, members: [] }).members.push(u);
+      return acc;
+    }, {})
+  ).filter((g) => `${g.department} ${g.members.map((m) => m.name).join(" ")}`.toLowerCase().includes(search.toLowerCase()));
+
+  const groupColumns: GridColumn<GroupRow>[] = [
+    { key: "department", header: "Group", width: 200 },
+    { key: "count", header: "Members", width: 90, align: "right", value: (g) => g.members.length },
+    { key: "active", header: "Active", width: 90, align: "right", value: (g) => g.members.filter((m) => m.isActive).length },
+    { key: "roles", header: "Roles", width: 240, value: (g) => [...new Set(g.members.map((m) => m.roleName))].join(", ") },
+    { key: "names", header: "Members", width: 360, wrap: true, value: (g) => g.members.map((m) => m.name).join(", ") },
+  ];
+
   return (
     <AppShell>
       <GridPage>
+        <h1 className="text-[22px] font-bold text-[#2B3036]">User Management</h1>
         <GridTabs
           tabs={[
-            { key: "users", label: `Team Members (${filteredUsers.length})` },
-            { key: "rbac", label: `Roles & Permissions (${roles.length})` },
+            { key: "members", label: "Members" },
+            { key: "roles", label: "Roles" },
+            { key: "scopes", label: "Scopes" },
+            { key: "groups", label: "Groups" },
           ]}
           value={tab}
           onChange={setTab}
         />
-        {tab === "users" ? (
+        {tab === "members" && (
           <DataGrid
-            title="Team Members"
+            key="members"
+            title="Members"
             columns={userColumns}
             rows={filteredUsers}
             getRowId={(r) => r.id}
@@ -313,10 +349,61 @@ export default function TeamRbacPage() {
               />
             )}
           />
-        ) : (
+        )}
+
+        {tab === "roles" && (
+          <DataGrid
+            key="roles"
+            title="Roles"
+            columns={roleColumns}
+            rows={roles.filter((r) => `${r.name} ${r.slug} ${r.description}`.toLowerCase().includes(search.toLowerCase()))}
+            getRowId={(r) => r.id}
+            exportName="roles"
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search roles..."
+            onRefresh={() => void loadAll()}
+            actions={[
+              { label: "New", onClick: () => setRoleModalOpen(true), hidden: !can("rbac:manage") },
+              { label: "Edit Scopes", onClick: () => setTab("scopes") },
+            ]}
+            detail={(r) => (
+              <DetailList
+                items={[
+                  ["Role", r.name],
+                  ["Description", r.description],
+                  ["Members", team.filter((u) => u.roleId === r.id).map((u) => u.name).join(", ") || "No members"],
+                  ["Scopes", r.permissions.join(", ")],
+                ]}
+              />
+            )}
+          />
+        )}
+
+        {tab === "groups" && (
+          <DataGrid
+            key="groups"
+            title="Groups"
+            columns={groupColumns}
+            rows={groups}
+            getRowId={(g) => g.id}
+            exportName="groups"
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search groups or members..."
+            onRefresh={() => void loadAll()}
+            detail={(g) => (
+              <DetailList
+                items={g.members.map((m) => [m.name, `${m.jobTitle} · ${m.roleName}${m.isActive ? "" : " · Disabled"}`] as [string, string])}
+              />
+            )}
+          />
+        )}
+
+        {tab === "scopes" && (
           <section className="bg-white border border-[#D9DEE3] flex flex-col min-w-0">
             <div className="px-4 pt-3 flex items-baseline gap-2">
-              <h1 className="text-[16px] font-semibold text-[#2B3036]">Roles &amp; Permissions</h1>
+              <h2 className="text-[16px] font-semibold text-[#2B3036]">Scopes</h2>
               <span className="text-[12.5px] text-[#6B7280]">
                 {can("rbac:manage") ? "Click a cell to grant or revoke a permission." : "Read-only. Super Admin can edit permissions."}
               </span>

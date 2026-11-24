@@ -20,8 +20,9 @@ import {
   Menu,
   Package,
   Settings,
-  ShieldCheck,
   TrendingUp,
+  UserCircle,
+  UserCog,
   Users,
   Wrench,
   X,
@@ -117,7 +118,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     {
       title: "Administration",
       items: [
-        { label: "Team & RBAC", href: "/team", icon: ShieldCheck, permission: "users:read" },
+        { label: "User Management", href: "/team", icon: UserCog, permission: "users:read" },
         { label: "Settings", href: "/settings", icon: Settings, permission: "settings:manage" },
       ],
     },
@@ -206,7 +207,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           )}
           {can("users:read") && (
-            <Link href="/team" title="Team" className="hidden sm:flex w-10 h-10 rounded-sm items-center justify-center text-[#4B5563] hover:bg-[#EEF1F4] hover:text-[#1668AC]">
+            <Link href="/team" title="User Management" className="hidden sm:flex w-10 h-10 rounded-sm items-center justify-center text-[#4B5563] hover:bg-[#EEF1F4] hover:text-[#1668AC]">
               <Users className="w-5 h-5" />
             </Link>
           )}
@@ -245,16 +246,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <div className="text-[13px] font-medium truncate">{user.name}</div>
                   <div className="text-[11.5px] text-[#64748B] truncate">{user.email}</div>
                 </div>
-                {can("users:read") && (
-                  <Link href="/team" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3.5 py-2 text-[13px] hover:bg-[#F8FAFC]">
-                    <ShieldCheck className="w-4 h-4 text-[#64748B]" /> Team &amp; RBAC
-                  </Link>
-                )}
+                <Link href="/profile" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3.5 py-2 text-[13px] hover:bg-[#F8FAFC]">
+                  <UserCircle className="w-4 h-4 text-[#64748B]" /> Profile Settings
+                </Link>
                 <button
                   onClick={() => void logout()}
                   className="w-full flex items-center gap-2 px-3.5 py-2 text-[13px] text-[#DC2626] hover:bg-[#FEF2F2]"
                 >
-                  <LogOut className="w-4 h-4" /> Sign out
+                  <LogOut className="w-4 h-4" /> Sign Out
                 </button>
               </div>
             )}

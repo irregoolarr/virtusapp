@@ -17,7 +17,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VirtusMS — Management Service Team Operations",
+  title: "VMS",
   description:
     "Unified platform for corrective & preventive maintenance, implementations, POCs, service numbers, pipeline, RBAC, and scheduled email alerts.",
 };

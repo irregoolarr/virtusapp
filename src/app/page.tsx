@@ -137,11 +137,6 @@ export default function DashboardPage() {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5">
             <div className="flex items-center">
-              {can("maintenance:write") && (
-                <Link href="/corrective?new=1" className={`${toolbarBtn} inline-flex items-center`}>
-                  New Incident
-                </Link>
-              )}
               {can("maintenance:read") && (
                 <Link href="/corrective" className={`${toolbarBtn} inline-flex items-center`}>
                   Incidents

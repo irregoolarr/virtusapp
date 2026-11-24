@@ -138,7 +138,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your email"
-                className="w-full rounded-[8px] border border-[#D4D4D8] bg-white px-3 py-2.5 text-[13.5px] text-[#18181B] placeholder:text-[#A1A1AA] focus:outline-none focus:border-[#FF2224] focus:ring-2 focus:ring-[#FF2224]/15 transition-colors"
+                className="w-full rounded-[8px] border border-[#D4D4D8] bg-white px-3 py-2.5 text-[13.5px] text-[#18181B] placeholder:text-[#A1A1AA] focus:outline-none focus:border-[#A4CDE5] focus:ring-2 focus:ring-[#A4CDE5]/40 transition-colors"
               />
             </div>
 
@@ -149,7 +149,7 @@ export default function LoginPage() {
               >
                 Password
               </label>
-              <div className="flex items-stretch rounded-[8px] border border-[#D4D4D8] bg-white overflow-hidden focus-within:border-[#FF2224] focus-within:ring-2 focus-within:ring-[#FF2224]/15 transition-colors">
+              <div className="flex items-stretch rounded-[8px] border border-[#D4D4D8] bg-white overflow-hidden focus-within:border-[#A4CDE5] focus-within:ring-2 focus-within:ring-[#A4CDE5]/40 transition-colors">
                 <input
                   id="login-password"
                   type={showPassword ? "text" : "password"}
@@ -178,7 +178,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => setShowForgotHelp((prev) => !prev)}
-                className="text-[12px] font-medium text-[#FF2224] hover:text-[#E01B1D] transition-colors"
+                className="text-[12px] font-medium text-[#2F6F98] hover:text-[#0D3461] transition-colors"
               >
                 Forgot password
               </button>
@@ -188,7 +188,7 @@ export default function LoginPage() {
               <div className="rounded-[8px] border border-[#E4E4E7] bg-[#F4F4F5] px-3 py-2.5 text-[12px] leading-relaxed text-[#52525B]">
                 Contact your Super Admin (
                 <span className="font-medium text-[#18181B]">iona@virtusms.io</span>
-                ) to reset credentials in Team &amp; RBAC, or sign in using a Demo RBAC profile below.
+                ) to reset credentials in User Management, or sign in using a Demo RBAC profile below.
               </div>
             )}
 
@@ -201,7 +201,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full rounded-[8px] bg-[#FF2224] hover:bg-[#E01B1D] text-white py-2.5 text-[13.5px] font-medium shadow-sm transition-colors disabled:opacity-50"
+              className="w-full rounded-[8px] bg-[#A4CDE5] hover:bg-[#8DBFDC] text-[#0D3461] py-2.5 text-[13.5px] font-medium shadow-sm transition-colors disabled:opacity-50"
             >
               {submitting ? "Signing in..." : "Sign In"}
             </button>
@@ -250,7 +250,7 @@ export default function LoginPage() {
               className="w-full rounded-[8px] border border-[#D4D4D8] bg-white hover:bg-[#F4F4F5]/60 px-3.5 py-2.5 text-[13px] font-medium text-[#18181B] flex items-center justify-between gap-2 transition-colors"
             >
               <span className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-[#FF2224] shrink-0" />
+                <ShieldCheck className="w-4 h-4 text-[#2F6F98] shrink-0" />
                 <span>Quick Demo Sign-In (RBAC Profiles)</span>
               </span>
               <ChevronDown
@@ -283,7 +283,7 @@ export default function LoginPage() {
                       <span className="text-[12.5px] font-semibold text-[#18181B]">
                         {acc.name}
                       </span>
-                      <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-full bg-[#F4F4F5] text-[#FF2224] border border-[#E4E4E7]">
+                      <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-full bg-[#F4F4F5] text-[#2F6F98] border border-[#E4E4E7]">
                         {acc.role}
                       </span>
                     </div>
@@ -299,7 +299,7 @@ export default function LoginPage() {
           <footer className="mt-7 text-center text-[11.5px] leading-[1.6] text-[#A1A1AA]">
             <div>Copyright Virtus Technology Indonesia · CTI Group 2026 ©</div>
             <div>All rights reserved.</div>
-            <div>Version 1.0.0</div>
+            <div>Version 0.0.1</div>
           </footer>
         </div>
       </div>

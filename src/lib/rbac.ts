@@ -24,9 +24,9 @@ export const PERMISSIONS = [
   { key: "events:delete", module: "Events & Alerts", label: "Delete scheduled events" },
   { key: "reports:read", module: "Reporting", label: "View operational reports" },
   { key: "reports:export", module: "Reporting", label: "Export CSV & email reports" },
-  { key: "users:read", module: "Team & RBAC", label: "View team members directory" },
-  { key: "users:manage", module: "Team & RBAC", label: "Create, edit & deactivate users" },
-  { key: "rbac:manage", module: "Team & RBAC", label: "Edit roles & permission matrix" },
+  { key: "users:read", module: "User Management", label: "View team members directory" },
+  { key: "users:manage", module: "User Management", label: "Create, edit & deactivate users" },
+  { key: "rbac:manage", module: "User Management", label: "Edit roles & permission matrix" },
   { key: "settings:manage", module: "Settings", label: "Configure SMTP & alert defaults" },
 ] as const;
 
