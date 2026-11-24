@@ -11,37 +11,11 @@ import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ToastProvider";
 import { cn, getInitials } from "@/lib/utils";
+import type { PermissionDefinition, RoleItem, TeamMember } from "@/shared/types";
 
-interface TeamUserRow {
-  id: number;
-  name: string;
-  email: string;
-  jobTitle: string;
-  department: string;
-  phone: string | null;
-  avatarColor: string;
-  availability: string;
-  isActive: boolean;
-  roleId: number;
-  roleName: string;
-  roleSlug: string;
-}
-
-interface RoleRow {
-  id: number;
-  name: string;
-  slug: string;
-  description: string;
-  permissions: string[];
-  isSystem: boolean;
-  memberCount: number;
-}
-
-interface PermDef {
-  key: string;
-  module: string;
-  label: string;
-}
+type TeamUserRow = TeamMember;
+type RoleRow = RoleItem;
+type PermDef = PermissionDefinition;
 
 export default function TeamRbacPage() {
   const { user, can, refreshAuth, refreshLookups } = useAuth();

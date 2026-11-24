@@ -11,40 +11,10 @@ import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ToastProvider";
 import { cn, getInitials } from "@/lib/utils";
+import type { CustomerItem, PartnerItem } from "@/shared/types";
 
-interface CustomerRow {
-  id: number;
-  code: string;
-  name: string;
-  industry: string;
-  tier: string;
-  status: string;
-  contactName: string;
-  contactEmail: string;
-  contactPhone: string | null;
-  address: string | null;
-  notes: string | null;
-  managerId: number | null;
-  managerName: string | null;
-  managerAvatarColor: string | null;
-  serviceCount: number;
-}
-
-interface PartnerRow {
-  id: number;
-  code: string;
-  name: string;
-  partnerType: string;
-  tier: string;
-  specialization: string;
-  contactName: string;
-  contactEmail: string;
-  contactPhone: string | null;
-  escalationEmail: string | null;
-  address: string | null;
-  status: string;
-  notes: string | null;
-}
+type CustomerRow = CustomerItem;
+type PartnerRow = PartnerItem;
 
 export default function CustomersPartnersPage() {
   const { user, lookups, can, refreshLookups } = useAuth();

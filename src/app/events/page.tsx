@@ -11,49 +11,11 @@ import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ToastProvider";
 import { cn, formatDateTime } from "@/lib/utils";
+import { EVENT_TYPES } from "@/shared/constants";
+import type { AlertLogRecord, EventItem } from "@/shared/types";
 
-const EVENT_TYPES = [
-  "PM Reminder",
-  "SLA Alert",
-  "Contract Renewal",
-  "POC Review",
-  "Implementation Milestone",
-  "Weekly Report",
-  "Custom Event",
-] as const;
-
-interface EventRow {
-  id: number;
-  eventCode: string;
-  title: string;
-  description: string;
-  eventType: string;
-  linkedModule: string;
-  linkedRefCode: string | null;
-  scheduledAt: string;
-  nextRunAt: string;
-  recurrence: string;
-  reminderMinutesBefore: number;
-  recipientEmails: string[];
-  emailSubject: string;
-  emailBody: string;
-  status: string;
-  lastSentAt: string | null;
-  createdByName: string | null;
-}
-
-interface AlertLogRow {
-  id: number;
-  eventId: number | null;
-  recipientEmails: string[];
-  subject: string;
-  bodyPreview: string;
-  deliveryMode: string;
-  status: string;
-  messageId: string | null;
-  errorMessage: string | null;
-  sentAt: string;
-}
+type EventRow = EventItem;
+type AlertLogRow = AlertLogRecord;
 
 export default function EventsPage() {
   const { user, can, refreshLookups } = useAuth();

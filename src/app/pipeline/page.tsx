@@ -10,31 +10,12 @@ import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ToastProvider";
 import { formatCurrency, formatShortDate } from "@/lib/utils";
+import { PIPELINE_STAGES } from "@/shared/constants";
+import type { PipelineItem } from "@/shared/types";
 
-const STAGES = ["Contacted", "Negotiation", "Offer Sent", "Deal Closed"] as const;
+const STAGES = PIPELINE_STAGES;
 
-interface PipelineDealRow {
-  id: number;
-  dealCode: string;
-  title: string;
-  description: string;
-  stage: string;
-  dealValueUsd: number;
-  probabilityPct: number;
-  expectedCloseDate: string | null;
-  customerId: number | null;
-  partnerId: number | null;
-  productId: number | null;
-  ownerId: number | null;
-  customerName: string | null;
-  customerAddress: string | null;
-  customerEmail: string | null;
-  assigneeName: string | null;
-  assigneeJobTitle: string | null;
-  assigneeAvatarColor: string | null;
-  commentCount: number;
-  attachmentCount: number;
-}
+type PipelineDealRow = PipelineItem;
 
 export default function PipelinePage() {
   const { user, lookups, can, refreshLookups } = useAuth();

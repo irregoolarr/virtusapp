@@ -11,39 +11,13 @@ import { RecordModal } from "@/components/RecordModal";
 import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ToastProvider";
+import { PM_FREQUENCIES, PREVENTIVE_STAGES } from "@/shared/constants";
+import type { ChecklistItem, PreventiveItem } from "@/shared/types";
 
-const STAGES = ["Scheduled", "In Progress", "Verification", "Completed"] as const;
-const FREQS = ["Monthly", "Quarterly", "Semi-Annual", "Annual"] as const;
+const STAGES = PREVENTIVE_STAGES;
+const FREQS = PM_FREQUENCIES;
 
-interface ChecklistItem {
-  id: string;
-  label: string;
-  done: boolean;
-}
-
-interface PreventiveRow {
-  id: number;
-  planCode: string;
-  title: string;
-  description: string;
-  frequency: string;
-  status: string;
-  scheduledDate: string;
-  checklist: ChecklistItem[];
-  customerId: number | null;
-  serviceNumberId: number | null;
-  productId: number | null;
-  assigneeId: number | null;
-  customerName: string | null;
-  customerAddress: string | null;
-  customerEmail: string | null;
-  serviceCode: string | null;
-  assigneeName: string | null;
-  assigneeJobTitle: string | null;
-  assigneeAvatarColor: string | null;
-  commentCount: number;
-  attachmentCount: number;
-}
+type PreventiveRow = PreventiveItem;
 
 export default function PreventivePage() {
   const { user, lookups, can, refreshLookups } = useAuth();

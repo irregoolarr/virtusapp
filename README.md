@@ -214,6 +214,43 @@ git push -u origin fix/my-change # Vercel posts a Preview URL on the branch/PR
 ```
 Tip: give the **Preview** environment its own `DATABASE_URL` (e.g. a Neon branch) so testing never touches production data. Schema changes: re-run `DATABASE_URL=... pnpm db:push` against each cloud database.
 
+## Architecture
+
+One Next.js project, deployed as one app, with a strict frontend / backend split inside it.
+
+```
+src/
+├── app/                    Frontend pages (all client-side, "use client")
+│   └── api/**/route.ts     Backend HTTP layer — thin: auth + validate + call a service
+├── components/             UI components (grid, charts, shell) — never touch the database
+├── server/                 Backend only
+│   ├── http.ts             route() guard, parseBody(), ApiError, serialize()
+│   └── services/*.ts       Business logic and database access (one file per module)
+├── shared/                 Used by BOTH sides — no server imports
+│   ├── constants.ts        Stages, statuses, enums
+│   ├── schemas.ts          zod request schemas (API validates with them)
+│   └── types.ts            API response types (pages import these)
+├── db/                     Drizzle schema, connection, seed
+└── lib/                    auth/session, RBAC permission list, mailer, formatting
+```
+
+**Rules that keep the split clean**
+
+- Pages and components talk to the backend only through `fetch("/api/...")`. They import from `@/shared/*`, `@/components/*` and `@/lib/utils`/`@/lib/rbac` — never from `@/db`, `@/server` or `@/lib/auth`.
+- A route file only does HTTP work. Example:
+  ```ts
+  export const POST = route("maintenance:write", async ({ req, user }) => {
+    const input = await parseBody(req, correctiveCreateSchema, "Invalid corrective maintenance input");
+    return created({ item: await createCorrective(input, user.id) });
+  });
+  ```
+  `route()` returns 401/403 before the handler runs; services throw `ApiError` (400/404/409) which becomes `{ "error": "..." }`.
+- Services return `Wire<T>` values (dates as ISO strings, exactly what JSON sends), typed against `src/shared/types.ts`. If the database or a service drifts from what the pages expect, `pnpm typecheck` fails.
+
+**Adding a module:** add the table in `src/db/schema.ts` → enums in `shared/constants.ts` → request schema in `shared/schemas.ts` → response type in `shared/types.ts` → `server/services/<module>.ts` → thin `app/api/<module>/route.ts` → page using the shared types.
+
+**Splitting into two projects later:** `src/app` (minus `api`) + `src/components` + `src/shared` become the frontend; `src/server` + `src/db` + `src/lib` + `src/shared` + the route files become the backend. The frontend already only speaks HTTP.
+
 ## Demo Login Profiles
 
 All seeded users use password **`virtus123`** (or the `SEED_PASSWORD` you seeded with). Locally you can also click any profile card on `/login`:

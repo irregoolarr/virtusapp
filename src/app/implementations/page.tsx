@@ -11,39 +11,12 @@ import { RecordModal } from "@/components/RecordModal";
 import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ToastProvider";
+import { IMPLEMENTATION_STAGES } from "@/shared/constants";
+import type { ImplementationItem, MilestoneItem } from "@/shared/types";
 
-const STAGES = ["Kickoff", "Configuration", "UAT / Staging", "Go-Live"] as const;
+const STAGES = IMPLEMENTATION_STAGES;
 
-interface MilestoneItem {
-  id: string;
-  title: string;
-  completed: boolean;
-}
-
-interface ImplementationRow {
-  id: number;
-  projectCode: string;
-  title: string;
-  description: string;
-  status: string;
-  progressPct: number;
-  targetGoLive: string | null;
-  milestones: MilestoneItem[];
-  blockers: string | null;
-  customerId: number | null;
-  partnerId: number | null;
-  serviceNumberId: number | null;
-  productId: number | null;
-  leadUserId: number | null;
-  customerName: string | null;
-  customerAddress: string | null;
-  customerEmail: string | null;
-  assigneeName: string | null;
-  assigneeJobTitle: string | null;
-  assigneeAvatarColor: string | null;
-  commentCount: number;
-  attachmentCount: number;
-}
+type ImplementationRow = ImplementationItem;
 
 export default function ImplementationsPage() {
   const { user, lookups, can } = useAuth();

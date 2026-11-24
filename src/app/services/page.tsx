@@ -12,28 +12,9 @@ import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ToastProvider";
 import { cn, formatCurrency, formatShortDate } from "@/lib/utils";
+import type { ServiceItem } from "@/shared/types";
 
-interface ServiceRow {
-  id: number;
-  serviceNumber: string;
-  title: string;
-  category: string;
-  slaTier: string;
-  status: string;
-  monthlyFeeUsd: number;
-  startDate: string;
-  endDate: string;
-  customerId: number;
-  partnerId: number | null;
-  productId: number | null;
-  picUserId: number | null;
-  siteLocation: string | null;
-  notes: string | null;
-  customerName: string | null;
-  partnerName: string | null;
-  productName: string | null;
-  picName: string | null;
-}
+type ServiceRow = ServiceItem;
 
 export default function ServicesPage() {
   const { user, lookups, can, refreshLookups } = useAuth();

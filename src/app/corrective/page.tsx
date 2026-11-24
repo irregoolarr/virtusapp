@@ -10,35 +10,12 @@ import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ToastProvider";
 import { formatShortDate } from "@/lib/utils";
+import { CORRECTIVE_STAGES, SEVERITIES } from "@/shared/constants";
+import type { CorrectiveItem } from "@/shared/types";
 
-const STAGES = ["Reported", "Diagnosing", "In Repair", "Resolved"] as const;
-const SEVERITIES = ["Critical", "High", "Medium", "Low"] as const;
+const STAGES = CORRECTIVE_STAGES;
 
-interface CorrectiveRow {
-  id: number;
-  ticketCode: string;
-  title: string;
-  description: string;
-  severity: string;
-  status: string;
-  rootCause: string | null;
-  resolutionNotes: string | null;
-  dueDate: string | null;
-  customerId: number | null;
-  partnerId: number | null;
-  serviceNumberId: number | null;
-  productId: number | null;
-  assigneeId: number | null;
-  customerName: string | null;
-  customerAddress: string | null;
-  customerEmail: string | null;
-  serviceCode: string | null;
-  assigneeName: string | null;
-  assigneeJobTitle: string | null;
-  assigneeAvatarColor: string | null;
-  commentCount: number;
-  attachmentCount: number;
-}
+type CorrectiveRow = CorrectiveItem;
 
 export default function CorrectivePage() {
   const { user, lookups, can, refreshLookups } = useAuth();

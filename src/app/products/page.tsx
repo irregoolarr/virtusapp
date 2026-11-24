@@ -11,22 +11,9 @@ import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ToastProvider";
 import { formatCurrency } from "@/lib/utils";
+import type { ProductItem } from "@/shared/types";
 
-interface ProductRow {
-  id: number;
-  sku: string;
-  name: string;
-  category: string;
-  vendorName: string;
-  partnerId: number | null;
-  partnerName: string | null;
-  description: string;
-  slaTargetHours: number;
-  pricingModel: string;
-  unitPriceUsd: number;
-  status: string;
-  activeDeployments: number;
-}
+type ProductRow = ProductItem;
 
 export default function ProductsPage() {
   const { user, lookups, can, refreshLookups } = useAuth();

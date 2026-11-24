@@ -2,6 +2,9 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import type { LookupsData } from "@/shared/types";
+
+export type { LookupsData };
 
 export interface SessionUser {
   id: number;
@@ -15,56 +18,6 @@ export interface SessionUser {
   roleName: string;
   roleSlug: string;
   permissions: string[];
-}
-
-export interface LookupCustomer {
-  id: number;
-  name: string;
-  code: string;
-}
-export interface LookupPartner {
-  id: number;
-  name: string;
-  code: string;
-}
-export interface LookupProduct {
-  id: number;
-  name: string;
-  sku: string;
-}
-export interface LookupService {
-  id: number;
-  serviceNumber: string;
-  title: string;
-  customerId: number;
-}
-export interface LookupUser {
-  id: number;
-  name: string;
-  email: string;
-  jobTitle: string;
-  avatarColor: string;
-  availability: string;
-}
-export interface LookupRole {
-  id: number;
-  name: string;
-  slug: string;
-}
-
-export interface LookupsData {
-  customers: LookupCustomer[];
-  partners: LookupPartner[];
-  products: LookupProduct[];
-  services: LookupService[];
-  users: LookupUser[];
-  roles: LookupRole[];
-  badges: {
-    corrective: number;
-    preventive: number;
-    pipeline: number;
-    events: number;
-  };
 }
 
 interface AuthContextValue {

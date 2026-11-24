@@ -10,35 +10,13 @@ import { RecordModal } from "@/components/RecordModal";
 import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ToastProvider";
+import { POC_OUTCOMES, POC_STAGES } from "@/shared/constants";
+import type { PocItem } from "@/shared/types";
 
-const STAGES = ["Scoping", "Active Trial", "Evaluation", "Approved"] as const;
-const OUTCOMES = ["Pending", "Success", "Extended", "Dropped"] as const;
+const STAGES = POC_STAGES;
+const OUTCOMES = POC_OUTCOMES;
 
-interface PocRow {
-  id: number;
-  pocCode: string;
-  title: string;
-  description: string;
-  status: string;
-  outcome: string;
-  successCriteria: string;
-  evaluationScore: number;
-  startDate: string | null;
-  targetReviewDate: string | null;
-  customerId: number | null;
-  partnerId: number | null;
-  productId: number | null;
-  leadUserId: number | null;
-  customerName: string | null;
-  customerAddress: string | null;
-  customerEmail: string | null;
-  productName: string | null;
-  assigneeName: string | null;
-  assigneeJobTitle: string | null;
-  assigneeAvatarColor: string | null;
-  commentCount: number;
-  attachmentCount: number;
-}
+type PocRow = PocItem;
 
 export default function PocPage() {
   const { user, lookups, can } = useAuth();
