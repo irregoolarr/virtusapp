@@ -16,23 +16,156 @@ Full-stack operational workspace for Managed Service Teams, powered by **Next.js
 - **Event Management & Reporting**: Scheduled reminders (one-time or recurring `Daily`/`Weekly`/`Monthly`) with a background PostgreSQL worker (`src/instrumentation.ts`), live SMTP email alerting (`nodemailer`) + Sandbox Outbox audit log, CSV exports, and email digest dispatch.
 - **Team & RBAC**: User management (`Super Admin`, `Service Manager`, `Field Engineer`, `Account Lead`, `Viewer`) and live interactive Role-Based Access Control permission matrix.
 
+## Prerequisites & Installation
+
+Before running **VirtusMS** on a local machine or server, ensure the following tools are installed:
+
+| Tool | Version | Purpose |
+| --- | --- | --- |
+| **Git** | `2.x+` | Clone the repository and pull updates |
+| **Node.js** | `20+` required (`22 LTS` recommended) | Next.js 15 / React 19 runtime |
+| **pnpm** | `10+` (latest recommended) | Package manager (`pnpm-lock.yaml`, `pnpm-workspace.yaml`) |
+| **PostgreSQL** or **Docker + Docker Compose** | PostgreSQL `16+` (`postgres:16-alpine` in `docker-compose.yml`) | Database backend |
+
+### Install Commands by OS
+
+#### Ubuntu / Debian (Linux Server / WSL)
+
+1. Install base utilities (`git`, `curl`, CA certificates):
+   ```bash
+   sudo apt-get update && sudo apt-get install -y git curl ca-certificates
+   ```
+2. Install **Node.js 22 LTS** via NodeSource:
+   ```bash
+   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs
+   ```
+3. Install **pnpm** via the official installer:
+   ```bash
+   curl -fsSL https://get.pnpm.io/install.sh | sh -
+   source ~/.bashrc
+   ```
+4. Install a database backend (**choose one**):
+   - **Choice A — Native PostgreSQL:**
+     ```bash
+     sudo apt-get install -y postgresql postgresql-client
+     sudo systemctl enable --now postgresql
+     ```
+     *(If running inside WSL without systemd, use `sudo service postgresql start` instead of `systemctl`.)*
+   - **Choice B — Docker Engine + Compose plugin:**
+     ```bash
+     sudo apt-get install -y docker.io docker-compose-plugin
+     sudo systemctl enable --now docker
+     ```
+     *(Optional, to run Docker without `sudo`: `sudo usermod -aG docker "$USER"`, then re-open your shell.)*
+
+#### macOS (Homebrew)
+
+```bash
+brew install git node@22 pnpm
+```
+
+Then install **one** database backend:
+
+- **Native PostgreSQL:**
+  ```bash
+  brew install postgresql@16 && brew services start postgresql@16
+  ```
+- **Docker Desktop:**
+  ```bash
+  brew install --cask docker
+  ```
+
+#### Windows (PowerShell / winget)
+
+```powershell
+winget install Git.Git OpenJS.NodeJS.LTS pnpm.pnpm
+```
+
+Then install **one** database backend:
+
+- **Native PostgreSQL:**
+  ```powershell
+  winget install PostgreSQL.PostgreSQL.16
+  ```
+- **Docker Desktop:**
+  ```powershell
+  winget install Docker.DockerDesktop
+  ```
+
+### Verify Installations
+
+Run these commands to confirm every prerequisite is ready:
+
+```bash
+git --version && node -v && pnpm -v
+```
+
+And check whichever database backend you installed:
+
+```bash
+psql --version          # If using native PostgreSQL
+docker compose version  # If using Docker
+```
+
 ## Setup & Local Development
 
-1. Configure environment variables:
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/irregoolarr/virtusapp.git
+   cd virtusapp
+   ```
+
+2. **Create `.env.local` from `.env.example`:**
    ```bash
    cp .env.example .env.local
    ```
-2. Start PostgreSQL (either local PostgreSQL service or `docker compose up -d`).
-3. Install dependencies, push schema, and seed demo data:
+   > For production or shared servers, update `SESSION_SECRET` and the database password in `.env.local` (and `DATABASE_URL` accordingly).
+
+3. **Start and initialize PostgreSQL (choose one option):**
+   - **Option A — Docker Compose** (automatically creates the `virtus` user and `virtusapp` database matching `.env.example`):
+     ```bash
+     docker compose up -d
+     ```
+   - **Option B — Native PostgreSQL** (create the `virtus` role and `virtusapp` database):
+     ```bash
+     sudo -u postgres psql -v ON_ERROR_STOP=1 <<'SQL'
+     CREATE ROLE virtus WITH LOGIN PASSWORD 'virtus_dev_pass' CREATEDB;
+     CREATE DATABASE virtusapp OWNER virtus;
+     \c virtusapp
+     GRANT ALL ON SCHEMA public TO virtus;
+     SQL
+     ```
+
+4. **Install dependencies, push schema, and seed demo data:**
    ```bash
    pnpm install
    pnpm db:push
    pnpm db:seed
    ```
-4. Start the app:
-   ```bash
-   pnpm dev
-   ```
+
+5. **Run the application:**
+   - **Development mode:**
+     ```bash
+     pnpm dev
+     ```
+   - **Production server:**
+     ```bash
+     pnpm build
+     pnpm start
+     ```
+   Open `http://localhost:3000/login` in your browser.
+
+### Updating Your Local Server
+
+When new commits are pushed to GitHub, pull and apply changes locally:
+
+```bash
+git pull
+pnpm install      # Run if package.json or pnpm-lock.yaml changed
+pnpm db:push      # Run if src/db/schema.ts changed
+```
+
+Then restart the app (`pnpm dev`, or rebuild and restart with `pnpm build && pnpm start` in production). Your `.env.local` configuration and PostgreSQL data are not tracked in git and will remain untouched across `git pull`.
 
 ## Demo Login Profiles
 
