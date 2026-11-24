@@ -1,13 +1,10 @@
-import { and, desc, eq, inArray, isNotNull, isNull, lte, notInArray } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, lte, notInArray } from "drizzle-orm";
 import {
-  activities,
-  attachments,
   businessPartners,
   correctiveMaintenances,
   customers,
   db,
   products,
-  roles,
   serviceNumbers,
   users,
 } from "@/db";
@@ -16,10 +13,21 @@ import type { CorrectiveItem } from "@/shared/types";
 import { closeSchema, correctiveCreateSchema, reopenSchema, resolveSchema } from "@/shared/schemas";
 import { CM_CATEGORIES, CORRECTIVE_DONE_STAGES, isCorrectiveDone } from "@/shared/constants";
 import { defaultSlaDue, formatDuration } from "@/shared/sla";
+import { formatForEmail } from "@/lib/utils";
 import type { z } from "zod";
 import { logActivity, notifyByEmail } from "./activities";
-import { deleteAttachmentRow } from "./attachments";
-import { getCommentCounts, nextFormattedCode, nextSequence, parseDateOrNull } from "./common";
+import {
+  checkCategory,
+  checkServiceBelongsToCustomer,
+  customerContact,
+  getCommentCounts,
+  managerEmails,
+  nextFormattedCode,
+  nextSequence,
+  parseDateOrNull,
+  removeRecordArtifacts,
+  userContact,
+} from "./common";
 import { getOpsPreferences } from "./settings";
 
 type CreateInput = z.output<typeof correctiveCreateSchema>;
@@ -64,21 +72,7 @@ async function getTicket(id: number): Promise<CorrectiveRow> {
   return row;
 }
 
-async function userContact(id: number | null | undefined) {
-  if (!id) return null;
-  const [u] = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, id)).limit(1);
-  return u ?? null;
-}
 
-/** Active Super Admins and Service Managers — the escalation audience. */
-async function managerEmails(): Promise<string[]> {
-  const rows = await db
-    .select({ email: users.email })
-    .from(users)
-    .innerJoin(roles, eq(users.roleId, roles.id))
-    .where(and(eq(users.isActive, true), inArray(roles.slug, ["super_admin", "service_manager"])));
-  return rows.map((r) => r.email);
-}
 
 // ---- Validation --------------------------------------------------------------
 
@@ -88,31 +82,13 @@ function requireResolution(status: string | undefined, detail: string | null | u
   }
 }
 
-function checkCategory(category: string, subcategory: string) {
-  const subs = CM_CATEGORIES[category];
-  if (!subs) throw badRequest(`Unknown category: ${category}`);
-  if (!subs.includes(subcategory)) throw badRequest(`"${subcategory}" is not a subcategory of ${category}`);
-}
 
-/** A service number must belong to the ticket's customer. */
-async function checkServiceBelongsToCustomer(serviceNumberId: number | null | undefined, customerId: number | null | undefined) {
-  if (!serviceNumberId) return;
-  const [srv] = await db
-    .select({ customerId: serviceNumbers.customerId, number: serviceNumbers.serviceNumber })
-    .from(serviceNumbers)
-    .where(eq(serviceNumbers.id, serviceNumberId))
-    .limit(1);
-  if (!srv) throw badRequest("Service number not found");
-  if (customerId && srv.customerId !== customerId) {
-    throw badRequest(`Service ${srv.number} does not belong to the selected customer`);
-  }
-}
 
 // ---- Create / update / delete ---------------------------------------------------
 
 export async function createCorrective(d: CreateInput, actorId: number) {
   requireResolution(d.status, d.resolutionDetail);
-  checkCategory(d.category, d.subcategory);
+  checkCategory(CM_CATEGORIES, d.category, d.subcategory);
   await checkServiceBelongsToCustomer(d.serviceNumberId, d.customerId);
 
   const now = new Date();
@@ -160,7 +136,7 @@ export async function createCorrective(d: CreateInput, actorId: number) {
       entityId: created.id,
       to: [assignee.email],
       subject: `${code} has been logged and assigned to you`,
-      body: `Hello ${assignee.name},\n\n${code} — ${created.title}\nPriority: ${created.severity}\nCategory: ${created.category} / ${created.subcategory}\nSLA target: ${created.dueDate?.toISOString() ?? "—"}\n\n${created.description}`,
+      body: `Hello ${assignee.name},\n\n${code} — ${created.title}\nPriority: ${created.severity}\nCategory: ${created.category} / ${created.subcategory}\nSLA target: ${formatForEmail(created.dueDate)}\n\n${created.description}`,
       actorId,
     });
   }
@@ -171,7 +147,7 @@ export async function updateCorrective(id: number, d: UpdateInput, actorId: numb
   const before = await getTicket(id);
   requireResolution(d.status, d.resolutionDetail ?? before.resolutionDetail);
   if (d.category !== undefined || d.subcategory !== undefined) {
-    checkCategory(d.category ?? before.category, d.subcategory ?? before.subcategory);
+    checkCategory(CM_CATEGORIES, d.category ?? before.category, d.subcategory ?? before.subcategory);
   }
   if (d.serviceNumberId !== undefined || d.customerId !== undefined) {
     await checkServiceBelongsToCustomer(
@@ -266,13 +242,7 @@ async function recordChanges(before: CorrectiveRow, after: CorrectiveRow, actorI
 export async function deleteCorrective(id: number): Promise<void> {
   const [deleted] = await db.delete(correctiveMaintenances).where(eq(correctiveMaintenances.id, id)).returning();
   if (!deleted) throw notFound();
-  // Remove the ticket's history and files (Drive copies are deleted best-effort).
-  const files = await db
-    .select({ id: attachments.id })
-    .from(attachments)
-    .where(and(eq(attachments.entityType, ENTITY), eq(attachments.entityId, id)));
-  for (const f of files) await deleteAttachmentRow(f.id);
-  await db.delete(activities).where(and(eq(activities.entityType, ENTITY), eq(activities.entityId, id)));
+  await removeRecordArtifacts(ENTITY, id);
 }
 
 // ---- Lifecycle actions: Resolve → Close, or Reopen ---------------------------------
@@ -282,13 +252,7 @@ export async function resolveCorrective(id: number, d: z.output<typeof resolveSc
   if (isCorrectiveDone(before.status)) throw badRequest(`${before.ticketCode} is already ${before.status.toLowerCase()}`);
 
   // Check the customer can be notified before changing anything.
-  const [cust] =
-    d.notifyCustomer && before.customerId
-      ? await db
-          .select({ name: customers.name, contactName: customers.contactName, email: customers.contactEmail })
-          .from(customers)
-          .where(eq(customers.id, before.customerId))
-      : [];
+  const cust = d.notifyCustomer ? await customerContact(before.customerId) : null;
   if (d.notifyCustomer && !cust?.email) throw badRequest("This ticket has no customer contact email to notify");
 
   const now = new Date();
@@ -398,17 +362,12 @@ export async function reopenCorrective(id: number, d: z.output<typeof reopenSche
 
 // ---- SLA monitoring (run by cron / scheduler / opportunistically) ------------------
 
-let lastSlaRun = 0;
-
 /**
  * 1. Escalate Critical tickets open longer than the "auto-escalate" minutes in Settings.
  * 2. Alert on tickets past their SLA target.
  * Each ticket is alerted once (escalatedAt / slaBreachNotifiedAt).
  */
-export async function runSlaChecks(opts: { minIntervalMs?: number } = {}): Promise<{ escalated: number; breached: number }> {
-  if (opts.minIntervalMs && Date.now() - lastSlaRun < opts.minIntervalMs) return { escalated: 0, breached: 0 };
-  lastSlaRun = Date.now();
-
+export async function runSlaChecks(): Promise<{ escalated: number; breached: number }> {
   const now = new Date();
   const { autoEscalateCriticalMinutes } = await getOpsPreferences();
   const escalateBefore = new Date(now.getTime() - autoEscalateCriticalMinutes * 60_000);
@@ -475,7 +434,7 @@ export async function runSlaChecks(opts: { minIntervalMs?: number } = {}): Promi
       entityId: t.id,
       to: [...new Set([...(assignee ? [assignee.email] : []), ...managers])],
       subject: `SLA BREACHED: ${t.ticketCode} ${t.title}`,
-      body: `${t.ticketCode} passed its SLA target (${t.dueDate?.toISOString()}).\nPriority: ${t.severity}\nStatus: ${t.status}\nOwner: ${assignee?.name ?? "Unassigned"}`,
+      body: `${t.ticketCode} passed its SLA target (${formatForEmail(t.dueDate)}).\nPriority: ${t.severity}\nStatus: ${t.status}\nOwner: ${assignee?.name ?? "Unassigned"}`,
     });
   }
 

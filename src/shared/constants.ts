@@ -69,3 +69,42 @@ export const ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;
 export const ATTACHMENT_MAX_BYTES_DRIVE = 100 * 1024 * 1024;
 /** File types the app will show inline (preview); everything else is download-only. */
 export const PREVIEWABLE_MIME = ["application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp", "text/plain", "text/csv"] as const;
+
+// ---- Preventive maintenance ----------------------------------------------------
+
+/** Equipment / service domain → item type for preventive visits. */
+export const PM_CATEGORIES: Record<string, readonly string[]> = {
+  Network: ["Router", "Switch", "Wireless AP", "SD-WAN / Link"],
+  Security: ["Firewall", "VPN Gateway", "Endpoint / EDR", "SIEM / Logging"],
+  "Server & Storage": ["Server Hardware", "OS Patching", "Backup Verification", "Storage Array", "Virtualization"],
+  "Power & Facility": ["UPS", "Generator", "Cooling / HVAC", "Rack & Cabling"],
+  Application: ["Health Check", "License Renewal", "Certificate Renewal"],
+  Other: ["General"],
+};
+export const PM_CATEGORY_NAMES = Object.keys(PM_CATEGORIES);
+
+/** Standard inspection steps per item type (pre-filled on new plans; editable). */
+export const PM_CHECKLIST_TEMPLATES: Record<string, readonly string[]> = {
+  Router: ["Check firmware version & advisories", "Review interface errors / CRC", "Verify routing table & BGP sessions", "Back up configuration", "Check CPU / memory / temperature"],
+  Switch: ["Check firmware version & advisories", "Review port errors & STP topology", "Verify uplink redundancy", "Back up configuration", "Check PoE budget & temperature"],
+  Firewall: ["Review firmware version & advisories", "Check HA sync status", "Review unused / shadowed rules", "Back up configuration", "Check CPU / memory / session usage"],
+  "VPN Gateway": ["Check certificate expiry", "Review active tunnels & failures", "Verify MFA / RADIUS integration", "Back up configuration"],
+  "Server Hardware": ["Check hardware health (iLO / iDRAC)", "Review disk / RAID status", "Check fans, PSU and temperature", "Review system event log"],
+  "OS Patching": ["Snapshot / back up before patching", "Apply approved patches", "Reboot & verify services", "Document installed KBs / packages"],
+  "Backup Verification": ["Check last backup job results", "Test-restore a sample", "Verify retention & offsite copy", "Check backup storage capacity"],
+  UPS: ["Run battery self-test", "Check load percentage", "Review alarms & event log", "Verify input / output voltage", "Check room temperature & vents"],
+  Generator: ["Run test start under load", "Check fuel level", "Inspect battery & charger", "Review maintenance log"],
+  "Health Check": ["Review application logs for errors", "Check response time / availability", "Verify integrations", "Check disk / database growth"],
+  "Certificate Renewal": ["List certificates expiring in 60 days", "Renew / replace certificates", "Verify chain & bindings", "Update inventory"],
+};
+export const PM_DEFAULT_CHECKLIST = [
+  "Verify backup & rollback readiness",
+  "Run health inspection & capture metrics",
+  "Review logs for errors",
+  "Update documentation",
+] as const;
+
+/** Months between visits for each frequency. */
+export const PM_FREQUENCY_MONTHS: Record<string, number> = { Monthly: 1, Quarterly: 3, "Semi-Annual": 6, Annual: 12 };
+/** A visit counts as "due soon" this many days ahead. */
+export const PM_DUE_SOON_DAYS = 3;

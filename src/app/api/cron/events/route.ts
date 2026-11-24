@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processDueEvents } from "@/lib/mailer";
-import { runSlaChecks } from "@/server/services/corrective";
+import { runScheduledChecks } from "@/server/services/monitoring";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +16,6 @@ export async function GET(req: NextRequest) {
   }
 
   const result = await processDueEvents();
-  const sla = await runSlaChecks();
-  return NextResponse.json({ ranAt: new Date().toISOString(), ...result, sla });
+  const checks = await runScheduledChecks();
+  return NextResponse.json({ ranAt: new Date().toISOString(), ...result, ...checks });
 }

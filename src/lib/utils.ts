@@ -33,6 +33,22 @@ const idrCompact = new Intl.NumberFormat("id-ID", { notation: "compact", maximum
 const usdFormat = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
 /** All amounts in the app are Rupiah, e.g. "Rp 27.050.000". */
+const wibFormat = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Asia/Jakarta",
+});
+
+/** Date/time for emails sent by the server (servers run in UTC), e.g. "25 Nov 2026, 14:30 WIB". */
+export function formatForEmail(value: Date | string | null | undefined): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? "—" : `${wibFormat.format(d)} WIB`;
+}
+
 export function formatCurrency(amount: number): string {
   return idrFormat.format(amount).replace(/\u00a0/g, " ");
 }

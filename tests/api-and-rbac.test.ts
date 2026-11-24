@@ -627,3 +627,65 @@ test("Corrective: categories, SLA default & breach alert, resolve → close → 
   assert.equal((await api(`/api/services/${srvId}`, { method: "DELETE" }, adminCookie)).status, 200);
   for (const c of [custAId, custBId]) assert.equal((await api(`/api/customers/${c}`, { method: "DELETE" }, adminCookie)).status, 200);
 });
+
+test("Preventive: type check, reminder & overdue alerts, complete → next visit, reopen", async () => {
+  const adminCookie = await loginAs(ADMIN_EMAIL);
+  const post = (path: string, body: unknown) => api(path, { method: "POST", body: JSON.stringify(body) }, adminCookie);
+  const base = { description: "Automated PM test", frequency: "Quarterly", category: "Security", subcategory: "Firewall" };
+
+  const badType = await post("/api/maintenance/preventive", { ...base, title: "Bad", subcategory: "UPS", scheduledDate: new Date().toISOString() });
+  assert.equal(badType.status, 400);
+
+  // Overdue visit (scheduled 2 days ago) and an upcoming one (in 12 hours)
+  const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000);
+  const overdue = await post("/api/maintenance/preventive", {
+    ...base,
+    title: "Overdue firewall PM",
+    scheduledDate: twoDaysAgo.toISOString(),
+    checklist: [
+      { id: "a", label: "Back up config", done: true },
+      { id: "b", label: "Check HA", done: false },
+    ],
+  });
+  assert.equal(overdue.status, 201, JSON.stringify(overdue.json));
+  const overdueId = (overdue.json as { item: { id: number } }).item.id;
+  const soon = await post("/api/maintenance/preventive", { ...base, title: "Upcoming PM", scheduledDate: new Date(Date.now() + 12 * 3_600_000).toISOString() });
+  const soonId = (soon.json as { item: { id: number } }).item.id;
+
+  const run = await post("/api/events/process", {});
+  const pm = (run.json as { pm: { reminded: number; overdue: number } }).pm;
+  assert.ok(pm.overdue >= 1 && pm.reminded >= 1, JSON.stringify(pm));
+  const again = (await post("/api/events/process", {})).json as { pm: { reminded: number; overdue: number } };
+  assert.deepEqual(again.pm, { reminded: 0, overdue: 0 }, "PM alerts must not repeat");
+
+  // "Completed" only through the Complete action
+  const viaForm = await api(`/api/maintenance/preventive/${overdueId}`, { method: "PATCH", body: JSON.stringify({ status: "Completed" }) }, adminCookie);
+  assert.equal(viaForm.status, 400);
+
+  const done = await post(`/api/maintenance/preventive/${overdueId}/complete`, { completionNotes: "HA verified, config backed up", scheduleNext: true });
+  assert.equal(done.status, 200, JSON.stringify(done.json));
+  const { item, next } = done.json as {
+    item: { status: string };
+    next: { id: number; status: string; scheduledDate: string; checklist: Array<{ done: boolean }> };
+  };
+  assert.equal(item.status, "Completed");
+  assert.equal(next.status, "Scheduled");
+  assert.ok(next.checklist.every((c) => !c.done), "next visit checklist starts unticked");
+  const expected = new Date(twoDaysAgo);
+  expected.setMonth(expected.getMonth() + 3);
+  assert.ok(Math.abs(new Date(next.scheduledDate).getTime() - expected.getTime()) < 3 * 86_400_000, "next visit ~3 months later");
+
+  const reopened = await post(`/api/maintenance/preventive/${overdueId}/reopen`, { reason: "HA check incomplete" });
+  assert.equal(reopened.status, 200);
+  assert.equal((reopened.json as { item: { status: string } }).item.status, "In Progress");
+
+  const history = await api(`/api/activities?entityType=preventive&entityId=${overdueId}`, {}, adminCookie);
+  const cats = (history.json as { items: Array<{ category: string }> }).items.map((a) => a.category);
+  for (const expectedCat of ["Visit Scheduled", "Overdue", "Completed", "Next Visit", "Reopened"]) {
+    assert.ok(cats.includes(expectedCat), `missing ${expectedCat}: ${cats.join(", ")}`);
+  }
+
+  for (const id of [overdueId, soonId, next.id]) {
+    assert.equal((await api(`/api/maintenance/preventive/${id}`, { method: "DELETE" }, adminCookie)).status, 200);
+  }
+});

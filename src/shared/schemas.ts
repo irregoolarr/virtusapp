@@ -17,6 +17,7 @@ import {
   PARTNER_TIERS,
   PARTNER_TYPES,
   PIPELINE_STAGES,
+  PM_CATEGORY_NAMES,
   PM_FREQUENCIES,
   POC_OUTCOMES,
   POC_STAGES,
@@ -56,6 +57,9 @@ export const preventiveCreateSchema = z.object({
   frequency: z.enum(PM_FREQUENCIES).default("Quarterly"),
   status: z.enum(PREVENTIVE_STAGES).default("Scheduled"),
   scheduledDate: z.string(),
+  category: z.enum(PM_CATEGORY_NAMES as [string, ...string[]]).default("Other"),
+  subcategory: z.string().trim().min(1).max(80).default("General"),
+  completionNotes: z.string().max(5000).optional().nullable(),
   checklist: z
     .array(z.object({ id: z.string(), label: z.string(), done: z.boolean() }))
     .default([]),
@@ -259,6 +263,13 @@ export const closeSchema = z.object({
 
 export const reopenSchema = z.object({
   reason: z.string().trim().min(5, "Give a reason for reopening (at least 5 characters)").max(2000),
+});
+
+export const pmCompleteSchema = z.object({
+  completionNotes: z.string().trim().min(5, "Describe what was done (at least 5 characters)").max(5000),
+  scheduleNext: z.boolean().default(true),
+  nextScheduledDate: z.string().optional().nullable(),
+  notifyCustomer: z.boolean().default(false),
 });
 
 // Profile (self-service)

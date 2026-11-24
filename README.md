@@ -278,6 +278,13 @@ cached for 6 hours, with `open.er-api.com` as a labelled fallback when BI cannot
 
 > **Database tooling note:** PostgreSQL 18 needs `drizzle-kit` ≥ 0.31 (older versions try to drop PG18's named NOT NULL constraints on `db:push`).
 
+## Preventive Maintenance workflow
+
+- **Visits** have a category and item type (Firewall, UPS, Backup Verification, …). New plans get that type's **standard checklist** pre-filled (editable).
+- **Lifecycle:** Scheduled → In Progress → Verification → **Complete** (findings & actions required; warns about unticked checklist steps; optional PM report email to the customer; optionally **schedules the next visit** from the frequency — Monthly +1, Quarterly +3, Semi-Annual +6, Annual +12 months, same day, checklist reset). **Reopen** needs a reason.
+- **Schedule tracking:** the list shows *Due in …*, *Due today*, *Overdue …*, *Done on time / late*. The engineer gets a reminder email 24 hours before the visit, and the engineer plus managers get an overdue alert once the scheduled day has passed (each sent once per date; rescheduling re-arms them).
+- Same as Corrective: service list filtered by customer, attachments with preview, Activity History, centered window, ESC / unsaved-changes prompt.
+
 ## Attachments & Google Drive
 
 Corrective Maintenance tickets accept attachments. Executable/HTML/SVG files are refused, and downloads always go through the app, so access stays permission-checked.

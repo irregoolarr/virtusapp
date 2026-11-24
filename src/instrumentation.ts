@@ -11,13 +11,13 @@ export async function register() {
     g.__virtusSchedulerStarted = true;
 
     const { processDueEvents } = await import("@/lib/mailer");
-    const { runSlaChecks } = await import("@/server/services/corrective");
+    const { runScheduledChecks } = await import("@/server/services/monitoring");
 
     const tick = async () => {
       try {
         g.__virtusSchedulerLastBeat = new Date().toISOString();
         await processDueEvents();
-        await runSlaChecks();
+        await runScheduledChecks();
       } catch {
         // Ignore transient startup DB errors before migrations run
       }
