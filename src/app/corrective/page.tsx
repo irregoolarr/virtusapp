@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { LayoutGrid, Table2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { HeaderAnalyticsBand } from "@/components/HeaderAnalyticsBand";
@@ -119,6 +119,17 @@ export default function CorrectivePage() {
     });
     setModalOpen(true);
   };
+
+  // Support deep link from dashboard CTA: /corrective?new=1 opens the create form once.
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (autoOpenedRef.current || !lookups) return;
+    if (new URLSearchParams(window.location.search).get("new") === "1") {
+      autoOpenedRef.current = true;
+      openCreate();
+      window.history.replaceState(null, "", "/corrective");
+    }
+  });
 
   const openEditById = (id: number) => {
     const found = items.find((i) => i.id === id);

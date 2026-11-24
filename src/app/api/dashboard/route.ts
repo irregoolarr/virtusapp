@@ -78,13 +78,61 @@ export async function GET() {
   const healthRatePct =
     totalOpsAll > 0 ? Math.round(((totalOpsAll - openCorrective) / totalOpsAll) * 100) : 92;
 
-  // Weekly activity bars (Mon..Fri) derived cleanly with baseline + live counts
-  const days = ["Mon", "Tue", "Wed", "Thu", "Fri"];
-  const weeklyOps = days.map((day, idx) => ({
-    day,
-    preventive: Math.max(2, ((idx * 3 + pmRows.length) % 8) + 2),
-    corrective: Math.max(3, ((idx * 5 + cmRows.length) % 7) + 4),
-  }));
+  // Pipeline value by stage (fixed stage order)
+  const PIPELINE_STAGES = ["Contacted", "Negotiation", "Offer Sent", "Deal Closed"];
+  const pipelineByStage = PIPELINE_STAGES.map((stage) => {
+    const rows = dealRows.filter((d) => d.stage === stage);
+    return {
+      stage,
+      count: rows.length,
+      value: rows.reduce((sum, d) => sum + d.dealValueUsd, 0),
+    };
+  });
+
+  // Corrective incidents per customer (top 6 by volume)
+  const customerName = new Map(custRows.map((c) => [c.id, c.name]));
+  const incidentMap = new Map<string, { customer: string; total: number; open: number }>();
+  for (const c of cmRows) {
+    const name = (c.customerId && customerName.get(c.customerId)) || "Unassigned";
+    const entry = incidentMap.get(name) ?? { customer: name, total: 0, open: 0 };
+    entry.total += 1;
+    if (c.status !== "Resolved") entry.open += 1;
+    incidentMap.set(name, entry);
+  }
+  const incidentsByCustomer = [...incidentMap.values()]
+    .sort((a, b) => b.total - a.total || a.customer.localeCompare(b.customer))
+    .slice(0, 6);
+
+  // Upcoming workload: next 12 weeks, bucketed by week (Monday start)
+  const WEEKS = 12;
+  const weekStart = new Date();
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  const upcomingWorkload = Array.from({ length: WEEKS }, (_, i) => {
+    const start = new Date(weekStart.getTime() + i * 7 * 86_400_000);
+    return { weekStart: start.toISOString(), preventive: 0, corrective: 0, reminders: 0 };
+  });
+  const bucket = (date: Date | string | null | undefined): number => {
+    if (!date) return -1;
+    const t = new Date(date).getTime();
+    const idx = Math.floor((t - weekStart.getTime()) / (7 * 86_400_000));
+    return idx >= 0 && idx < WEEKS ? idx : -1;
+  };
+  for (const p of pmRows) {
+    if (p.status === "Completed") continue;
+    const i = bucket(p.scheduledDate);
+    if (i >= 0) upcomingWorkload[i].preventive += 1;
+  }
+  for (const c of cmRows) {
+    if (c.status === "Resolved") continue;
+    const i = bucket(c.dueDate);
+    if (i >= 0) upcomingWorkload[i].corrective += 1;
+  }
+  for (const e of eventRows) {
+    if (e.status !== "Scheduled") continue;
+    const i = bucket(e.nextRunAt);
+    if (i >= 0) upcomingWorkload[i].reminders += 1;
+  }
 
   const scheduledEvents = eventRows.filter((e) => e.status === "Scheduled").length;
 
@@ -110,7 +158,9 @@ export async function GET() {
       healthRatePct,
       totalOpenTasks: openCorrective + activePm + activeImplementations,
     },
-    weeklyOps,
+    pipelineByStage,
+    incidentsByCustomer,
+    upcomingWorkload,
     recentCorrective: cmRows.slice(0, 4),
     upcomingPm: pmRows.filter((p) => p.status !== "Completed").slice(0, 4),
     upcomingEvents: eventRows.slice(0, 5),

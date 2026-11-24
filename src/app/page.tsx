@@ -1,24 +1,16 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  AlertTriangle,
-  ArrowRight,
-  BellRing,
-  CalendarCheck2,
-  Compass,
-  Hash,
-  Layers,
-  MailCheck,
-  TrendingUp,
-  Wrench,
-} from "lucide-react";
+import { ArrowRight, CalendarCheck2, DollarSign, Layers, MailCheck, Plus, Wrench } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { HeaderAnalyticsBand } from "@/components/HeaderAnalyticsBand";
-import { WeeklyBarPoint } from "@/components/WeeklyBarsChart";
-import { cn, formatCurrency, formatDateTime, formatShortDate } from "@/lib/utils";
 import { useAuth } from "@/components/AuthProvider";
+import { KpiCard } from "@/components/dashboard/KpiCard";
+import { ChartCard, EmptyChart } from "@/components/dashboard/ChartCard";
+import { DonutChart } from "@/components/dashboard/DonutChart";
+import { GroupedBarChart, StackedBarChart } from "@/components/dashboard/BarCharts";
+import { SERIES, compactNumber } from "@/components/dashboard/chartUtils";
+import { cn, formatCurrency, formatDateTime, formatShortDate } from "@/lib/utils";
 
 interface DashboardPayload {
   metrics: {
@@ -35,59 +27,33 @@ interface DashboardPayload {
     activeServices: number;
     expiringServices: number;
     monthlyRecurringUsd: number;
-    totalCustomers: number;
-    totalPartners: number;
-    totalProducts: number;
     scheduledEvents: number;
-    healthRatePct: number;
-    totalOpenTasks: number;
   };
-  weeklyOps: WeeklyBarPoint[];
-  recentCorrective: Array<{
-    id: number;
-    ticketCode: string;
-    title: string;
-    severity: string;
-    status: string;
-    dueDate: string | null;
-  }>;
-  upcomingPm: Array<{
-    id: number;
-    planCode: string;
-    title: string;
-    frequency: string;
-    status: string;
-    scheduledDate: string;
-  }>;
-  upcomingEvents: Array<{
-    id: number;
-    eventCode: string;
-    title: string;
-    eventType: string;
-    nextRunAt: string;
-    status: string;
-    recurrence: string;
-  }>;
-  recentAlerts: Array<{
-    id: number;
-    subject: string;
-    deliveryMode: string;
-    status: string;
-    sentAt: string;
-  }>;
+  pipelineByStage: Array<{ stage: string; count: number; value: number }>;
+  incidentsByCustomer: Array<{ customer: string; total: number; open: number }>;
+  upcomingWorkload: Array<{ weekStart: string; preventive: number; corrective: number; reminders: number }>;
+  recentCorrective: Array<{ id: number; ticketCode: string; title: string; severity: string; status: string; dueDate: string | null }>;
+  upcomingPm: Array<{ id: number; planCode: string; title: string; frequency: string; status: string; scheduledDate: string }>;
+  upcomingEvents: Array<{ id: number; eventCode: string; title: string; eventType: string; nextRunAt: string; status: string; recurrence: string }>;
+  recentAlerts: Array<{ id: number; subject: string; deliveryMode: string; status: string; sentAt: string }>;
 }
 
+const TABS = ["Overview", "Maintenance", "Alerts & Reminders"] as const;
+type Tab = (typeof TABS)[number];
+
+const STAGE_COLORS = [SERIES.blue, SERIES.orange, SERIES.aqua, SERIES.yellow];
+
+const usd = (n: number) => `$${compactNumber(n)}`;
+
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [data, setData] = useState<DashboardPayload | null>(null);
-  const [search, setSearch] = useState("");
-  const [onlyMine, setOnlyMine] = useState(false);
+  const [tab, setTab] = useState<Tab>("Overview");
+  const [weeks, setWeeks] = useState(8);
 
   const loadDashboard = useCallback(async () => {
     const res = await fetch("/api/dashboard", { cache: "no-store" });
-    if (res.ok) {
-      setData(await res.json());
-    }
+    if (res.ok) setData(await res.json());
   }, []);
 
   useEffect(() => {
@@ -96,302 +62,321 @@ export default function DashboardPage() {
 
   const m = data?.metrics;
 
-  const filteredCorrective = (data?.recentCorrective ?? []).filter((c) =>
-    `${c.ticketCode} ${c.title} ${c.status}`.toLowerCase().includes(search.toLowerCase())
+  const pipelineSlices = useMemo(
+    () =>
+      (data?.pipelineByStage ?? []).map((s, i) => ({
+        label: s.stage,
+        value: s.value,
+        color: STAGE_COLORS[i % STAGE_COLORS.length],
+        meta: `${s.count} deal${s.count === 1 ? "" : "s"}`,
+      })),
+    [data]
   );
+  const pipelineTotal = pipelineSlices.reduce((s, x) => s + x.value, 0);
 
-  const filteredPm = (data?.upcomingPm ?? []).filter((p) =>
-    `${p.planCode} ${p.title} ${p.frequency}`.toLowerCase().includes(search.toLowerCase())
+  const incidentRows = useMemo(
+    () =>
+      (data?.incidentsByCustomer ?? []).map((c) => ({
+        label: c.customer,
+        open: c.open,
+        resolved: c.total - c.open,
+      })),
+    [data]
   );
+  const totalIncidents = (data?.incidentsByCustomer ?? []).reduce((s, c) => s + c.total, 0);
+
+  const workloadRows = useMemo(
+    () =>
+      (data?.upcomingWorkload ?? []).slice(0, weeks).map((w) => ({
+        label: formatShortDate(w.weekStart),
+        preventive: w.preventive,
+        corrective: w.corrective,
+        reminders: w.reminders,
+      })),
+    [data, weeks]
+  );
+  const workloadTotal = workloadRows.reduce((s, r) => s + r.preventive + r.corrective + r.reminders, 0);
 
   return (
     <AppShell>
-      <HeaderAnalyticsBand
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search incidents, PM plans, events..."
-        onlyMine={onlyMine}
-        onToggleOnlyMine={() => setOnlyMine((v) => !v)}
-        barTitle="Weekly operations"
-        weeklyData={data?.weeklyOps}
-        gaugePct={m?.healthRatePct ?? 78}
-        gaugeLabel="SLA & delivery health"
-        kpi1Value={m?.totalOpenTasks ?? 0}
-        kpi1Label="Active ops & tasks"
-        kpi1Href="/corrective"
-        kpi2Value={formatCurrency(m?.monthlyRecurringUsd ?? 0)}
-        kpi2Label="Managed monthly recurring"
-        kpi2Href="/services"
-      />
+      <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {/* Page header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-[24px] font-semibold tracking-tight text-[#0F172A]">Operations Dashboard</h1>
+            <p className="mt-0.5 text-[13px] text-[#64748B]">
+              Maintenance, delivery and commercial health across the Management Service Team
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex flex-col rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 min-w-[150px]">
+              <span className="text-[10.5px] text-[#64748B]">Workload window</span>
+              <select
+                value={weeks}
+                onChange={(e) => setWeeks(Number(e.target.value))}
+                className="bg-transparent text-[13px] font-medium text-[#0F172A] focus:outline-none cursor-pointer"
+              >
+                <option value={4}>Next 4 weeks</option>
+                <option value={8}>Next 8 weeks</option>
+                <option value={12}>Next 12 weeks</option>
+              </select>
+            </label>
+            {can("maintenance:write") && (
+              <Link
+                href="/corrective?new=1"
+                className="inline-flex items-center gap-2 h-11 px-4 rounded-md bg-[#FF2224] hover:bg-[#E01B1D] text-white text-[13.5px] font-semibold shadow-sm transition-colors"
+              >
+                <Plus className="w-4 h-4" /> Log Incident
+              </Link>
+            )}
+          </div>
+        </div>
 
-      <div className="px-6 lg:px-8 py-6 space-y-6">
-        {/* Quick Module Pulse Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Link
+        {/* Tabs */}
+        <div className="border-b border-[#E2E8F0] flex gap-1 overflow-x-auto" role="tablist">
+          {TABS.map((t) => (
+            <button
+              key={t}
+              role="tab"
+              aria-selected={tab === t}
+              onClick={() => setTab(t)}
+              className={cn(
+                "relative px-4 sm:px-6 py-3 text-[14px] whitespace-nowrap transition-colors",
+                tab === t ? "text-[#1D4ED8] font-medium" : "text-[#475569] hover:text-[#0F172A]"
+              )}
+            >
+              {t}
+              {tab === t && <span className="absolute left-0 right-0 -bottom-px h-[2px] bg-[#1D4ED8] rounded-full" />}
+            </button>
+          ))}
+        </div>
+
+        {/* KPI row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <KpiCard
             href="/corrective"
-            className="rounded-[14px] border border-[#ECECE7] bg-white p-4 hover:border-[#D0D0C8] transition-all"
-          >
-            <div className="flex items-center justify-between text-[#78787E]">
-              <span className="text-[12px] font-medium">Corrective Maintenance</span>
-              <Wrench className="w-4 h-4" />
-            </div>
-            <div className="mt-2.5 flex items-baseline justify-between">
-              <span className="text-[26px] font-semibold tabular-nums text-[#18181A]">
-                {m?.openCorrective ?? 0}
-              </span>
-              {(m?.criticalOpen ?? 0) > 0 && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
-                  <AlertTriangle className="w-3 h-3" />
-                  {m?.criticalOpen} critical
-                </span>
-              )}
-            </div>
-            <div className="mt-1 text-[11.5px] text-[#8E8E93]">
-              {m?.resolvedCorrective ?? 0} resolved tickets
-            </div>
-          </Link>
-
-          <Link
+            icon={Wrench}
+            value={m?.openCorrective ?? 0}
+            label="Open incidents"
+            note={m && m.criticalOpen > 0 ? `${m.criticalOpen} critical` : undefined}
+            tone={m && m.criticalOpen > 0 ? "bad" : "neutral"}
+          />
+          <KpiCard
             href="/preventive"
-            className="rounded-[14px] border border-[#ECECE7] bg-white p-4 hover:border-[#D0D0C8] transition-all"
-          >
-            <div className="flex items-center justify-between text-[#78787E]">
-              <span className="text-[12px] font-medium">Preventive Plans</span>
-              <CalendarCheck2 className="w-4 h-4" />
-            </div>
-            <div className="mt-2.5 flex items-baseline justify-between">
-              <span className="text-[26px] font-semibold tabular-nums text-[#18181A]">
-                {m?.activePm ?? 0}
-              </span>
-              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#F4F4F1] text-[#525258]">
-                {m?.completedPm ?? 0} completed
-              </span>
-            </div>
-            <div className="mt-1 text-[11.5px] text-[#8E8E93]">
-              Scheduled & verification windows
-            </div>
-          </Link>
-
-          <Link
+            icon={CalendarCheck2}
+            value={m?.activePm ?? 0}
+            label="Active PM plans"
+            note={m ? `${m.completedPm} done` : undefined}
+            tone="good"
+          />
+          <KpiCard
             href="/implementations"
-            className="rounded-[14px] border border-[#ECECE7] bg-white p-4 hover:border-[#D0D0C8] transition-all"
-          >
-            <div className="flex items-center justify-between text-[#78787E]">
-              <span className="text-[12px] font-medium">Implementations & POCs</span>
-              <Layers className="w-4 h-4" />
-            </div>
-            <div className="mt-2.5 flex items-baseline justify-between">
-              <span className="text-[26px] font-semibold tabular-nums text-[#18181A]">
-                {(m?.activeImplementations ?? 0) + (m?.activePocs ?? 0)}
-              </span>
-              <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#F4F4F1] text-[#525258]">
-                <Compass className="w-3 h-3" />
-                {m?.approvedPocs ?? 0} POC won
-              </span>
-            </div>
-            <div className="mt-1 text-[11.5px] text-[#8E8E93]">
-              {m?.activeImplementations ?? 0} rollouts · {m?.activePocs ?? 0} active POCs
-            </div>
-          </Link>
-
-          <Link
+            icon={Layers}
+            value={(m?.activeImplementations ?? 0) + (m?.activePocs ?? 0)}
+            label="Rollouts & POCs"
+            note={m ? `${m.approvedPocs} won` : undefined}
+            tone="good"
+          />
+          <KpiCard
             href="/services"
-            className="rounded-[14px] border border-[#ECECE7] bg-[#19191B] text-white p-4 shadow-sm hover:bg-[#232327] transition-all"
-          >
-            <div className="flex items-center justify-between text-zinc-400">
-              <span className="text-[12px] font-medium">Service Numbers & Deals</span>
-              <Hash className="w-4 h-4" />
+            icon={DollarSign}
+            value={formatCurrency(m?.monthlyRecurringUsd ?? 0)}
+            label="Monthly recurring"
+            note={m && m.expiringServices > 0 ? `${m.expiringServices} expiring` : undefined}
+            tone={m && m.expiringServices > 0 ? "warn" : "neutral"}
+          />
+        </div>
+
+        {tab === "Overview" && (
+          <>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <ChartCard
+                title="Pipeline by stage"
+                subtitle={`${formatCurrency(pipelineTotal)} total deal value · ${formatCurrency(m?.closedDealValue ?? 0)} closed`}
+                href="/pipeline"
+                hrefLabel="Open pipeline"
+              >
+                {pipelineTotal > 0 ? (
+                  <DonutChart slices={pipelineSlices} centerLabel="Total pipeline" formatValue={usd} />
+                ) : (
+                  <EmptyChart message="No pipeline deals yet" />
+                )}
+              </ChartCard>
+
+              <ChartCard
+                title="Incidents by customer"
+                subtitle={`${totalIncidents} corrective tickets · ${m?.openCorrective ?? 0} open`}
+                href="/corrective"
+                hrefLabel="Open corrective board"
+              >
+                {incidentRows.length > 0 ? (
+                  <StackedBarChart
+                    rows={incidentRows}
+                    series={[
+                      { key: "open", label: "Open", color: SERIES.orange },
+                      { key: "resolved", label: "Resolved", color: SERIES.blue },
+                    ]}
+                  />
+                ) : (
+                  <EmptyChart message="No corrective tickets yet" />
+                )}
+              </ChartCard>
             </div>
-            <div className="mt-2.5 flex items-baseline justify-between">
-              <span className="text-[26px] font-semibold tabular-nums">
-                {m?.activeServices ?? 0}
-              </span>
-              {(m?.expiringServices ?? 0) > 0 && (
-                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300">
-                  {m?.expiringServices} expiring &lt;30d
-                </span>
+
+            <ChartCard
+              title="Upcoming workload"
+              subtitle={`${workloadTotal} scheduled items over the next ${weeks} weeks, by week`}
+              href="/events"
+              hrefLabel="Open events"
+            >
+              {workloadRows.length > 0 ? (
+                <GroupedBarChart
+                  rows={workloadRows}
+                  series={[
+                    { key: "preventive", label: "Preventive visits", color: SERIES.blue },
+                    { key: "corrective", label: "Incident SLA due", color: SERIES.orange },
+                    { key: "reminders", label: "Reminders", color: SERIES.aqua },
+                  ]}
+                />
+              ) : (
+                <EmptyChart message="Nothing scheduled" />
               )}
-            </div>
-            <div className="mt-1 text-[11.5px] text-zinc-400 flex items-center justify-between">
-              <span>Pipeline won: {formatCurrency(m?.closedDealValue ?? 0)}</span>
-              <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-            </div>
-          </Link>
-        </div>
+            </ChartCard>
+          </>
+        )}
 
-        {/* Operational Workstreams Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-          {/* Left: Corrective + Preventive queues */}
-          <div className="xl:col-span-7 space-y-6">
-            <div className="rounded-[14px] border border-[#ECECE7] bg-white p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-[16px] font-semibold text-[#18181A]">
-                    Active Corrective Incidents
-                  </h2>
-                  <p className="text-[12px] text-[#78787E]">
-                    Break-fix & SLA escalations across managed customer circuits
-                  </p>
-                </div>
-                <Link
-                  href="/corrective"
-                  className="inline-flex items-center gap-1 text-[12.5px] font-medium text-[#18181A] hover:underline"
-                >
-                  Open board <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
-              </div>
-              <div className="divide-y divide-[#F1F1EC]">
-                {filteredCorrective.map((cm) => (
-                  <div key={cm.id} className="py-3 flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-[11px] text-[#8E8E93]">{cm.ticketCode}</span>
-                        <span
-                          className={cn(
-                            "text-[10.5px] font-medium px-2 py-0.5 rounded-full",
-                            cm.severity === "Critical"
-                              ? "bg-rose-50 text-rose-700 border border-rose-200"
-                              : cm.severity === "High"
-                                ? "bg-amber-50 text-amber-800 border border-amber-200"
-                                : "bg-[#F4F4F1] text-[#525258]"
-                          )}
-                        >
-                          {cm.severity}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 text-[13.5px] font-medium text-[#18181A] truncate">
-                        {cm.title}
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-[12px] font-medium text-[#18181A]">{cm.status}</div>
-                      <div className="text-[11px] text-[#8E8E93]">{formatShortDate(cm.dueDate)}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-[14px] border border-[#ECECE7] bg-white p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-[16px] font-semibold text-[#18181A]">
-                    Upcoming Preventive Maintenance
-                  </h2>
-                  <p className="text-[12px] text-[#78787E]">
-                    Recurring inspection & patch windows
-                  </p>
-                </div>
-                <Link
-                  href="/preventive"
-                  className="inline-flex items-center gap-1 text-[12.5px] font-medium text-[#18181A] hover:underline"
-                >
-                  Open schedule <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
-              </div>
-              <div className="divide-y divide-[#F1F1EC]">
-                {filteredPm.map((pm) => (
-                  <div key={pm.id} className="py-3 flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-[11px] text-[#8E8E93]">{pm.planCode}</span>
-                        <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-[#F4F4F1] text-[#525258]">
-                          {pm.frequency}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 text-[13.5px] font-medium text-[#18181A] truncate">
-                        {pm.title}
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-[12px] font-medium text-[#18181A]">{pm.status}</div>
-                      <div className="text-[11px] text-[#8E8E93]">
-                        {formatShortDate(pm.scheduledDate)}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+        {tab === "Maintenance" && (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <ListCard title="Active corrective incidents" href="/corrective" linkLabel="Open board">
+              {(data?.recentCorrective ?? []).map((cm) => (
+                <Row
+                  key={cm.id}
+                  code={cm.ticketCode}
+                  title={cm.title}
+                  tag={cm.severity}
+                  tagTone={cm.severity === "Critical" ? "bad" : cm.severity === "High" ? "warn" : "neutral"}
+                  right={cm.status}
+                  sub={`Due ${formatShortDate(cm.dueDate)}`}
+                />
+              ))}
+            </ListCard>
+            <ListCard title="Upcoming preventive maintenance" href="/preventive" linkLabel="Open schedule">
+              {(data?.upcomingPm ?? []).map((pm) => (
+                <Row
+                  key={pm.id}
+                  code={pm.planCode}
+                  title={pm.title}
+                  tag={pm.frequency}
+                  right={pm.status}
+                  sub={formatShortDate(pm.scheduledDate)}
+                />
+              ))}
+            </ListCard>
           </div>
+        )}
 
-          {/* Right: Scheduled Reminder Events & Recent Alert Outbox */}
-          <div className="xl:col-span-5 space-y-6">
-            <div className="rounded-[14px] border border-[#ECECE7] bg-white p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <BellRing className="w-4 h-4 text-[#18181A]" />
-                  <h2 className="text-[16px] font-semibold text-[#18181A]">
-                    Scheduled Event Reminders
-                  </h2>
-                </div>
-                <Link
-                  href="/events"
-                  className="text-[12.5px] font-medium text-[#18181A] hover:underline"
-                >
-                  Manage ({m?.scheduledEvents ?? 0})
-                </Link>
-              </div>
-              <div className="space-y-3">
-                {(data?.upcomingEvents ?? []).map((ev) => (
-                  <div
-                    key={ev.id}
-                    className="rounded-xl border border-[#ECECE7] bg-[#FAF9F5] p-3 flex items-start justify-between gap-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-[11px]">
-                        <span className="font-mono text-[#78787E]">{ev.eventCode}</span>
-                        <span className="px-1.5 py-0.5 rounded bg-white border border-[#E5E5DF] text-[#525258]">
-                          {ev.eventType}
-                        </span>
-                        <span className="text-[#8E8E93]">{ev.recurrence}</span>
-                      </div>
-                      <div className="mt-1 text-[13px] font-medium text-[#18181A] truncate">
-                        {ev.title}
-                      </div>
-                      <div className="mt-1 text-[11px] text-[#78787E]">
-                        Next trigger: {formatDateTime(ev.nextRunAt)}
-                      </div>
-                    </div>
-                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#18181A] text-white shrink-0">
-                      {ev.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-[14px] border border-[#ECECE7] bg-white p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <MailCheck className="w-4 h-4 text-[#18181A]" />
-                  <h2 className="text-[15px] font-semibold text-[#18181A]">
-                    Recent Email Alert Dispatches
-                  </h2>
-                </div>
-                <Link href="/events" className="text-[12px] text-[#78787E] hover:text-[#18181A]">
-                  Outbox
-                </Link>
-              </div>
-              <div className="space-y-2.5">
-                {(data?.recentAlerts ?? []).map((log) => (
-                  <div key={log.id} className="text-[12px] border-b border-[#F2F2ED] pb-2.5 last:border-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-[#18181A] truncate">{log.subject}</span>
-                      <span className="text-[10.5px] px-1.5 py-0.5 rounded bg-[#F4F4F1] text-[#525258] shrink-0">
-                        {log.status}
-                      </span>
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-[#8E8E93]">
-                      {log.deliveryMode} · {formatDateTime(log.sentAt)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+        {tab === "Alerts & Reminders" && (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <ListCard title={`Scheduled reminders (${m?.scheduledEvents ?? 0})`} href="/events" linkLabel="Manage">
+              {(data?.upcomingEvents ?? []).map((ev) => (
+                <Row
+                  key={ev.id}
+                  code={ev.eventCode}
+                  title={ev.title}
+                  tag={ev.eventType}
+                  right={ev.status}
+                  sub={`${ev.recurrence} · ${formatDateTime(ev.nextRunAt)}`}
+                />
+              ))}
+            </ListCard>
+            <ListCard title="Recent email alerts" href="/events" linkLabel="Outbox" icon={MailCheck}>
+              {(data?.recentAlerts ?? []).map((log) => (
+                <Row
+                  key={log.id}
+                  title={log.subject}
+                  tag={log.deliveryMode}
+                  right={log.status}
+                  rightTone={log.status === "Failed" ? "bad" : "neutral"}
+                  sub={formatDateTime(log.sentAt)}
+                />
+              ))}
+            </ListCard>
           </div>
-        </div>
+        )}
       </div>
     </AppShell>
+  );
+}
+
+type Tone = "bad" | "warn" | "neutral";
+const TAG_TONE: Record<Tone, string> = {
+  bad: "bg-[#FEF2F2] text-[#B91C1C] border-[#FECACA]",
+  warn: "bg-[#FFFBEB] text-[#92400E] border-[#FDE68A]",
+  neutral: "bg-[#F1F5F9] text-[#475569] border-[#E2E8F0]",
+};
+
+function ListCard({
+  title,
+  href,
+  linkLabel,
+  icon: Icon,
+  children,
+}: {
+  title: string;
+  href: string;
+  linkLabel: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  children: React.ReactNode;
+}) {
+  const empty = React.Children.count(children) === 0;
+  return (
+    <section className="rounded-md border border-[#E2E8F0] bg-white">
+      <header className="flex items-center justify-between px-5 py-4 border-b border-[#F1F5F9]">
+        <h2 className="flex items-center gap-2 text-[14px] font-semibold text-[#0F172A]">
+          {Icon && <Icon className="w-4 h-4 text-[#64748B]" />}
+          {title}
+        </h2>
+        <Link href={href} className="inline-flex items-center gap-1 text-[12.5px] font-medium text-[#1D4ED8] hover:underline">
+          {linkLabel} <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
+      </header>
+      <div className="divide-y divide-[#F1F5F9]">
+        {empty ? <div className="px-5 py-8 text-center text-[12.5px] text-[#64748B]">Nothing here yet</div> : children}
+      </div>
+    </section>
+  );
+}
+
+function Row({
+  code,
+  title,
+  tag,
+  tagTone = "neutral",
+  right,
+  rightTone = "neutral",
+  sub,
+}: {
+  code?: string;
+  title: string;
+  tag?: string;
+  tagTone?: Tone;
+  right: string;
+  rightTone?: Tone;
+  sub?: string;
+}) {
+  return (
+    <div className="px-5 py-3 flex items-center justify-between gap-4">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          {code && <span className="font-mono text-[11px] text-[#64748B]">{code}</span>}
+          {tag && <span className={cn("text-[10.5px] font-medium px-2 py-0.5 rounded border", TAG_TONE[tagTone])}>{tag}</span>}
+        </div>
+        <div className="mt-0.5 text-[13.5px] font-medium text-[#0F172A] truncate">{title}</div>
+      </div>
+      <div className="text-right shrink-0">
+        <div className={cn("text-[12.5px] font-medium", rightTone === "bad" ? "text-[#B91C1C]" : "text-[#0F172A]")}>{right}</div>
+        {sub && <div className="text-[11px] text-[#64748B]">{sub}</div>}
+      </div>
+    </div>
   );
 }
