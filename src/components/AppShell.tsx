@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -138,9 +139,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Brand */}
         <div className="flex items-center justify-between px-2.5 mb-6">
           <Link href="/" className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-[7px] bg-[#18181A] text-white text-[12px] font-semibold flex items-center justify-center">
-              V
-            </span>
+            <Image
+              src="/images/virtus-logo.png"
+              alt="Virtus"
+              width={36}
+              height={38}
+              className="h-8 w-auto object-contain"
+            />
             <span className="text-[19px] font-semibold tracking-tight text-[#18181A]">
               VirtusMS
             </span>
@@ -279,7 +284,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className="inline-flex items-center gap-2 text-[14px] font-semibold text-[#18181A]"
           >
             <Menu className="w-5 h-5" />
-            VirtusMS
+            <Image
+              src="/images/virtus-logo.png"
+              alt="Virtus"
+              width={36}
+              height={38}
+              className="h-8 w-auto object-contain"
+            />
+            <span>VirtusMS</span>
           </button>
           <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-white border border-[#E4E4DC] text-[#54545A]">
             {user.roleName}
