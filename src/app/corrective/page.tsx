@@ -426,6 +426,7 @@ export default function CorrectivePage() {
         canDelete={Boolean(editing && can("maintenance:delete"))}
         onDelete={() => deleteTicket(editing)}
         size="wide"
+        placement="center"
         showComments={false}
       >
         {editing && canWrite && (

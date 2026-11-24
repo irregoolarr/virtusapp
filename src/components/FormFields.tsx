@@ -38,7 +38,7 @@ export function FormActions({
   disabled?: boolean;
 }) {
   return (
-    <div className="pt-4 border-t border-[#D9DEE3] flex items-center justify-end gap-2.5">
+    <div className="sticky -bottom-5 z-10 -mx-6 px-6 py-3 bg-white border-t border-[#D9DEE3] flex items-center justify-end gap-2.5">
       <button
         type="button"
         onClick={onCancel}

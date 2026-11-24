@@ -25,6 +25,8 @@ interface RecordModalProps {
   onDelete?: () => Promise<void> | void;
   /** "wide" for records with grids inside (e.g. Activity History). */
   size?: "default" | "wide";
+  /** "right" = slide-in side panel (default); "center" = centered window. */
+  placement?: "right" | "center";
   /** Show the simple notes thread (modules without an Activity History). */
   showComments?: boolean;
   children: React.ReactNode;
@@ -40,6 +42,7 @@ export function RecordModal({
   canDelete,
   onDelete,
   size = "default",
+  placement = "right",
   showComments = true,
   children,
 }: RecordModalProps) {
@@ -121,14 +124,22 @@ export function RecordModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/35 backdrop-blur-[1px]">
+    <div
+      className={cn(
+        "fixed inset-0 z-50 flex bg-black/35 backdrop-blur-[1px]",
+        placement === "center" ? "items-center justify-center p-3 sm:p-6" : "items-center justify-end"
+      )}
+    >
       <div className="fixed inset-0" onClick={requestClose} aria-hidden="true" />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "drawer-in relative z-10 w-full h-full bg-white border-l border-[#D9DEE3] shadow-2xl flex flex-col",
+          "relative z-10 w-full bg-white shadow-2xl flex flex-col",
+          placement === "center"
+            ? "dialog-in max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)] border border-[#D9DEE3] rounded-sm"
+            : "drawer-in h-full border-l border-[#D9DEE3]",
           size === "wide" ? "max-w-4xl" : "max-w-xl"
         )}
       >
@@ -164,7 +175,7 @@ export function RecordModal({
         </div>
 
         {/* Body */}
-        <div ref={bodyRef} onInput={markDirty} onChange={markDirty} className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+        <div ref={bodyRef} onInput={markDirty} onChange={markDirty} className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-6">
           {children}
 
           {/* Comments Thread (when editing existing record) */}
