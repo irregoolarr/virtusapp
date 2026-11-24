@@ -1,4 +1,7 @@
 import {
+  bigint,
+  customType,
+  index,
   pgTable,
   serial,
   varchar,
@@ -8,6 +11,16 @@ import {
   timestamp,
   jsonb,
 } from "drizzle-orm/pg-core";
+
+/** Raw file bytes (used only when Google Drive storage is not configured). */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
+
+/** Rupiah amounts can exceed 2.1 billion, so money columns are bigint (JS number, exact up to 9e15). */
+const rupiah = (name: string) => bigint(name, { mode: "number" }).notNull().default(0);
 
 export interface ChecklistItem {
   id: string;
@@ -106,7 +119,7 @@ export const products = pgTable("products", {
   description: text("description").notNull(),
   slaTargetHours: integer("sla_target_hours").notNull().default(4),
   pricingModel: varchar("pricing_model", { length: 80 }).notNull().default("Monthly Managed"),
-  unitPriceUsd: integer("unit_price_usd").notNull().default(0),
+  unitPriceIdr: rupiah("unit_price_idr"),
   status: varchar("status", { length: 32 }).notNull().default("Active"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -119,7 +132,7 @@ export const serviceNumbers = pgTable("service_numbers", {
   category: varchar("category", { length: 80 }).notNull(),
   slaTier: varchar("sla_tier", { length: 60 }).notNull().default("24x7 Platinum"),
   status: varchar("status", { length: 40 }).notNull().default("Active"),
-  monthlyFeeUsd: integer("monthly_fee_usd").notNull().default(0),
+  monthlyFeeIdr: rupiah("monthly_fee_idr"),
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date").notNull(),
   customerId: integer("customer_id")
@@ -142,7 +155,7 @@ export const correctiveMaintenances = pgTable("corrective_maintenances", {
   severity: varchar("severity", { length: 24 }).notNull().default("High"),
   status: varchar("status", { length: 32 }).notNull().default("Reported"),
   rootCause: text("root_cause"),
-  resolutionNotes: text("resolution_notes"),
+  resolutionDetail: text("resolution_detail"),
   reportedAt: timestamp("reported_at").notNull().defaultNow(),
   dueDate: timestamp("due_date"),
   resolvedAt: timestamp("resolved_at"),
@@ -227,7 +240,7 @@ export const pipelineDeals = pgTable("pipeline_deals", {
   title: varchar("title", { length: 180 }).notNull(),
   description: text("description").notNull(),
   stage: varchar("stage", { length: 32 }).notNull().default("Contacted"),
-  dealValueUsd: integer("deal_value_usd").notNull().default(0),
+  dealValueIdr: rupiah("deal_value_idr"),
   probabilityPct: integer("probability_pct").notNull().default(25),
   expectedCloseDate: timestamp("expected_close_date"),
   customerId: integer("customer_id").references(() => customers.id, { onDelete: "set null" }),
@@ -289,3 +302,44 @@ export const appSettings = pgTable("app_settings", {
   value: jsonb("value").$type<Record<string, unknown>>().notNull().default({}),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+/**
+ * Timeline of a record: notes, outgoing emails, status / priority / assignment
+ * changes and attachment uploads. System entries are kept for audit.
+ */
+export const activities = pgTable(
+  "activities",
+  {
+    id: serial("id").primaryKey(),
+    entityType: varchar("entity_type", { length: 32 }).notNull(),
+    entityId: integer("entity_id").notNull(),
+    type: varchar("type", { length: 24 }).notNull(), // Email | Note | Update | Attachment
+    category: varchar("category", { length: 48 }).notNull(), // Outgoing Email | Status Change | ...
+    subject: varchar("subject", { length: 300 }).notNull(),
+    body: text("body").notNull().default(""),
+    actorId: integer("actor_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("activities_entity_idx").on(t.entityType, t.entityId)]
+);
+
+/** Files attached to a record. Stored in Google Drive when configured, else in the database. */
+export const attachments = pgTable(
+  "attachments",
+  {
+    id: serial("id").primaryKey(),
+    entityType: varchar("entity_type", { length: 32 }).notNull(),
+    entityId: integer("entity_id").notNull(),
+    fileName: varchar("file_name", { length: 255 }).notNull(),
+    mimeType: varchar("mime_type", { length: 150 }).notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    storage: varchar("storage", { length: 16 }).notNull(), // drive | database
+    driveFileId: varchar("drive_file_id", { length: 128 }),
+    driveLink: text("drive_link"),
+    content: bytea("content"),
+    uploadedById: integer("uploaded_by_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("attachments_entity_idx").on(t.entityType, t.entityId)]
+);

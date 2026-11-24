@@ -57,19 +57,19 @@ export async function getDashboard() {
 
   const closedDealValue = dealRows
     .filter((d) => d.stage === "Deal Closed")
-    .reduce((sum, d) => sum + d.dealValueUsd, 0);
+    .reduce((sum, d) => sum + d.dealValueIdr, 0);
   const openPipelineValue = dealRows
     .filter((d) => d.stage !== "Deal Closed")
-    .reduce((sum, d) => sum + d.dealValueUsd, 0);
+    .reduce((sum, d) => sum + d.dealValueIdr, 0);
 
   const activeServices = srvRows.filter((s) => s.status === "Active").length;
   const expiringServices = srvRows.filter((s) => {
     const diffDays = (new Date(s.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
     return diffDays <= 30 && diffDays >= 0;
   }).length;
-  const monthlyRecurringUsd = srvRows
+  const monthlyRecurringIdr = srvRows
     .filter((s) => s.status !== "Expired" && s.status !== "Suspended")
-    .reduce((sum, s) => sum + s.monthlyFeeUsd, 0);
+    .reduce((sum, s) => sum + s.monthlyFeeIdr, 0);
 
   const totalOpsCompleted = resolvedCorrective + completedPm + approvedPocs;
   const totalOpsAll = cmRows.length + pmRows.length + pocRows.length;
@@ -83,7 +83,7 @@ export async function getDashboard() {
     return {
       stage,
       count: rows.length,
-      value: rows.reduce((sum, d) => sum + d.dealValueUsd, 0),
+      value: rows.reduce((sum, d) => sum + d.dealValueIdr, 0),
     };
   });
 
@@ -148,7 +148,7 @@ export async function getDashboard() {
       openPipelineValue,
       activeServices,
       expiringServices,
-      monthlyRecurringUsd,
+      monthlyRecurringIdr,
       totalCustomers: custRows.length,
       totalPartners: partnerRows.length,
       totalProducts: productRows.length,

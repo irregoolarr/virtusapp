@@ -37,7 +37,7 @@ export async function createProduct(d: CreateInput) {
       description: d.description,
       slaTargetHours: d.slaTargetHours,
       pricingModel: d.pricingModel,
-      unitPriceUsd: d.unitPriceUsd,
+      unitPriceIdr: d.unitPriceIdr,
       status: d.status,
     })
     .returning();

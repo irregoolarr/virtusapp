@@ -12,7 +12,7 @@ import {
 } from "@/db";
 import type { AuthenticatedUser } from "@/lib/auth";
 import { sendAlertEmail } from "@/lib/mailer";
-import { escapeCsvCell } from "@/lib/utils";
+import { escapeCsvCell, formatCurrency } from "@/lib/utils";
 import { serialize } from "@/server/http";
 import { reportEmailSchema } from "@/shared/schemas";
 import type { z } from "zod";
@@ -81,7 +81,7 @@ export async function buildReportCsv(scope: string): Promise<string> {
           r.title,
           r.status,
           r.slaTier,
-          `$${r.monthlyFeeUsd}/mo`,
+          `${formatCurrency(r.monthlyFeeIdr)}/mo`,
           new Date(r.endDate).toISOString().slice(0, 10),
         ]
           .map(escapeCsvCell)
@@ -98,7 +98,7 @@ export async function buildReportCsv(scope: string): Promise<string> {
           r.title,
           r.stage,
           `${r.probabilityPct}%`,
-          `$${r.dealValueUsd}`,
+          formatCurrency(r.dealValueIdr),
           r.expectedCloseDate ? new Date(r.expectedCloseDate).toISOString().slice(0, 10) : "",
         ]
           .map(escapeCsvCell)
@@ -144,7 +144,7 @@ export async function getReportSummary() {
     return {
       stage,
       count: group.length,
-      valueUsd: group.reduce((s, d) => s + d.dealValueUsd, 0),
+      valueIdr: group.reduce((s, d) => s + d.dealValueIdr, 0),
     };
   });
 
@@ -157,12 +157,12 @@ export async function getReportSummary() {
     summary: {
       totalCustomers: cust.length,
       totalServices: srv.length,
-      monthlyRecurringUsd: srv.reduce((s, x) => s + x.monthlyFeeUsd, 0),
+      monthlyRecurringIdr: srv.reduce((s, x) => s + x.monthlyFeeIdr, 0),
       pmCompliancePct,
       avgImpProgress,
       pocSuccessPct,
-      totalPipelineUsd: deals.reduce((s, d) => s + d.dealValueUsd, 0),
-      closedPipelineUsd: deals.filter((d) => d.stage === "Deal Closed").reduce((s, d) => s + d.dealValueUsd, 0),
+      totalPipelineIdr: deals.reduce((s, d) => s + d.dealValueIdr, 0),
+      closedPipelineIdr: deals.filter((d) => d.stage === "Deal Closed").reduce((s, d) => s + d.dealValueIdr, 0),
       alertsDispatched: alertLogs.length,
     },
     cmByStatus,
@@ -184,10 +184,10 @@ export async function emailReportDigest(input: z.output<typeof reportEmailSchema
 
   const openCm = cm.filter((c) => c.status !== "Resolved").length;
   const completedPm = pm.filter((p) => p.status === "Completed").length;
-  const closedDealsUsd = deals
+  const closedDealsIdr = deals
     .filter((d) => d.stage === "Deal Closed")
-    .reduce((s, d) => s + d.dealValueUsd, 0);
-  const mrrUsd = srv.reduce((s, x) => s + x.monthlyFeeUsd, 0);
+    .reduce((s, d) => s + d.dealValueIdr, 0);
+  const mrrIdr = srv.reduce((s, x) => s + x.monthlyFeeIdr, 0);
 
   const reportBody = [
     `VirtusMS Executive Service Operations Digest`,
@@ -196,8 +196,8 @@ export async function emailReportDigest(input: z.output<typeof reportEmailSchema
     ``,
     `1. Corrective Maintenance: ${openCm} open / ${cm.length} total tickets`,
     `2. Preventive Maintenance: ${completedPm} completed / ${pm.length} plans`,
-    `3. Active Service Numbers: ${srv.length} contracts ($${mrrUsd.toLocaleString()} MRR)`,
-    `4. Closed Pipeline Value: $${closedDealsUsd.toLocaleString()}`,
+    `3. Active Service Numbers: ${srv.length} contracts (${formatCurrency(mrrIdr)} MRR)`,
+    `4. Closed Pipeline Value: ${formatCurrency(closedDealsIdr)}`,
   ].join("\n");
 
   const dispatch = await sendAlertEmail({

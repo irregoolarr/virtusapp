@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Send, Trash2, X } from "lucide-react";
-import { formatDateTime, getInitials } from "@/lib/utils";
+import { Dialog, TextButton } from "@/components/Dialog";
+import { cn, formatDateTime, getInitials } from "@/lib/utils";
 
 interface CommentRow {
   id: number;
@@ -22,6 +23,10 @@ interface RecordModalProps {
   entityId?: number | null;
   canDelete?: boolean;
   onDelete?: () => Promise<void> | void;
+  /** "wide" for records with grids inside (e.g. Activity History). */
+  size?: "default" | "wide";
+  /** Show the simple notes thread (modules without an Activity History). */
+  showComments?: boolean;
   children: React.ReactNode;
 }
 
@@ -34,9 +39,47 @@ export function RecordModal({
   entityId,
   canDelete,
   onDelete,
+  size = "default",
+  showComments = true,
   children,
 }: RecordModalProps) {
   const [comments, setComments] = useState<CommentRow[]>([]);
+  const [dirty, setDirty] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  // A fresh record (or reopening) starts clean.
+  useEffect(() => {
+    setDirty(false);
+    setConfirmOpen(false);
+  }, [open, entityId, title]);
+
+  /** Close, but ask first when the form has unsaved edits. */
+  const requestClose = useCallback(() => {
+    if (dirty) setConfirmOpen(true);
+    else onClose();
+  }, [dirty, onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented) requestClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, requestClose]);
+
+  // Any edit inside the drawer (except areas marked data-ignore-dirty) marks it dirty.
+  const markDirty = (e: React.FormEvent) => {
+    const target = e.target as HTMLElement;
+    if (!target.closest("[data-ignore-dirty]")) setDirty(true);
+  };
+
+  const saveFromPrompt = () => {
+    setConfirmOpen(false);
+    const form = bodyRef.current?.querySelector<HTMLFormElement>("form[data-record-form]") ?? bodyRef.current?.querySelector("form");
+    form?.requestSubmit();
+  };
   const [commentText, setCommentText] = useState("");
   const [sendingComment, setSendingComment] = useState(false);
 
@@ -79,12 +122,16 @@ export function RecordModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/35 backdrop-blur-[1px]">
+      <div className="fixed inset-0" onClick={requestClose} aria-hidden="true" />
       <div
-        className="fixed inset-0"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <div className="relative z-10 w-full max-w-xl h-full bg-white border-l border-[#D9DEE3] shadow-2xl flex flex-col">
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={cn(
+          "drawer-in relative z-10 w-full h-full bg-white border-l border-[#D9DEE3] shadow-2xl flex flex-col",
+          size === "wide" ? "max-w-4xl" : "max-w-xl"
+        )}
+      >
         {/* Header */}
         <div className="px-6 py-5 bg-[#EEF1F4] border-b border-[#D9DEE3] flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -106,7 +153,9 @@ export function RecordModal({
             )}
             <button
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
+              title="Close (Esc)"
+              aria-label="Close"
               className="p-2 rounded-lg text-[#4B5563] hover:bg-black/5 transition-colors"
             >
               <X className="w-4 h-4" />
@@ -115,12 +164,12 @@ export function RecordModal({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+        <div ref={bodyRef} onInput={markDirty} onChange={markDirty} className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
           {children}
 
           {/* Comments Thread (when editing existing record) */}
-          {entityType && entityId && (
-            <div className="pt-5 border-t border-[#D9DEE3]">
+          {showComments && entityType && entityId && (
+            <div data-ignore-dirty className="pt-5 border-t border-[#D9DEE3]">
               <h3 className="text-[13px] font-semibold text-[#2B3036] mb-3">
                 Activity & Notes ({comments.length})
               </h3>
@@ -175,6 +224,34 @@ export function RecordModal({
           )}
         </div>
       </div>
+      <Dialog
+        open={confirmOpen}
+        title="Unsaved changes"
+        onClose={() => setConfirmOpen(false)}
+        width="max-w-md"
+        footer={
+          <>
+            <TextButton onClick={() => setConfirmOpen(false)} autoFocus>
+              Keep editing
+            </TextButton>
+            <TextButton
+              tone="danger"
+              onClick={() => {
+                setConfirmOpen(false);
+                setDirty(false);
+                onClose();
+              }}
+            >
+              Discard
+            </TextButton>
+            <TextButton tone="primary" onClick={saveFromPrompt}>
+              Save
+            </TextButton>
+          </>
+        }
+      >
+        <p className="text-[13px] text-[#4B5563]">You have changes that are not saved yet. Save them before closing?</p>
+      </Dialog>
     </div>
   );
 }

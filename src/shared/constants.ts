@@ -41,3 +41,6 @@ export const EVENT_STATUSES = ["Scheduled", "Sent", "Paused", "Failed"] as const
 export const AVAILABILITIES = ["Online", "On Duty", "Away", "Offline"] as const;
 
 export const COMMENT_ENTITY_TYPES = ["corrective", "preventive", "implementation", "poc", "pipeline", "customer"] as const;
+
+/** Max upload size. Vercel rejects request bodies above ~4.5 MB. */
+export const ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;

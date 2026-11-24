@@ -36,7 +36,7 @@ export default function ServicesPage() {
     category: "Managed Network",
     slaTier: "24x7 Platinum",
     status: "Active",
-    monthlyFeeUsd: 2500,
+    monthlyFeeIdr: 0,
     startDate: "",
     endDate: "",
     customerId: "",
@@ -78,7 +78,7 @@ export default function ServicesPage() {
   }).length;
   const totalMrr = items
     .filter((s) => s.status !== "Expired" && s.status !== "Suspended")
-    .reduce((sum, s) => sum + s.monthlyFeeUsd, 0);
+    .reduce((sum, s) => sum + s.monthlyFeeIdr, 0);
 
   const openCreate = () => {
     setEditing(null);
@@ -88,7 +88,7 @@ export default function ServicesPage() {
       category: "Managed Network",
       slaTier: "24x7 Platinum",
       status: "Active",
-      monthlyFeeUsd: 2500,
+      monthlyFeeIdr: 0,
       startDate: new Date().toISOString().slice(0, 10),
       endDate: new Date(Date.now() + 365 * 86400_000).toISOString().slice(0, 10),
       customerId: lookups?.customers[0]?.id ? String(lookups.customers[0].id) : "",
@@ -109,7 +109,7 @@ export default function ServicesPage() {
       category: row.category,
       slaTier: row.slaTier,
       status: row.status,
-      monthlyFeeUsd: row.monthlyFeeUsd,
+      monthlyFeeIdr: row.monthlyFeeIdr,
       startDate: new Date(row.startDate).toISOString().slice(0, 10),
       endDate: new Date(row.endDate).toISOString().slice(0, 10),
       customerId: String(row.customerId),
@@ -128,7 +128,7 @@ export default function ServicesPage() {
     try {
       const payload = {
         ...form,
-        monthlyFeeUsd: Number(form.monthlyFeeUsd),
+        monthlyFeeIdr: Number(form.monthlyFeeIdr),
         customerId: Number(form.customerId),
         partnerId: form.partnerId ? Number(form.partnerId) : null,
         productId: form.productId ? Number(form.productId) : null,
@@ -192,7 +192,7 @@ export default function ServicesPage() {
         </Pill>
       ),
     },
-    { key: "monthlyFeeUsd", header: "Monthly Fee", width: 120, align: "right", render: (r) => formatCurrency(r.monthlyFeeUsd) },
+    { key: "monthlyFeeIdr", header: "Monthly Fee", width: 120, align: "right", render: (r) => formatCurrency(r.monthlyFeeIdr) },
     {
       key: "endDate",
       header: "Contract End",
@@ -334,12 +334,12 @@ export default function ServicesPage() {
             </FieldLabel>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <FieldLabel label="Monthly Fee (USD)">
+            <FieldLabel label="Monthly Fee (IDR)">
               <input
                 type="number"
                 min={0}
-                value={form.monthlyFeeUsd}
-                onChange={(e) => setForm({ ...form, monthlyFeeUsd: Number(e.target.value) })}
+                value={form.monthlyFeeIdr}
+                onChange={(e) => setForm({ ...form, monthlyFeeIdr: Number(e.target.value) })}
                 className={inputClass}
               />
             </FieldLabel>

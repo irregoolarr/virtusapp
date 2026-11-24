@@ -6,6 +6,9 @@ import { DataGrid, GridPage, GridSelect, type GridColumn } from "@/components/gr
 import { DetailList } from "@/components/grid/DetailPane";
 import { Mono, Pill, SegmentProgress, severityTone, stageRatio } from "@/components/grid/cells";
 import { RecordModal } from "@/components/RecordModal";
+import { Dialog, TextButton } from "@/components/Dialog";
+import { ActivityHistory } from "@/components/records/ActivityHistory";
+import { AttachmentsPanel, uploadAttachments } from "@/components/records/AttachmentsPanel";
 import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ToastProvider";
@@ -22,10 +25,12 @@ export default function CorrectivePage() {
   const { notify } = useToast();
   const [items, setItems] = useState<CorrectiveRow[]>([]);
   const [search, setSearch] = useState("");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [showFilters, setShowFilters] = useState(false);
   const [sevFilter, setSevFilter] = useState("ALL");
-  const [onlyMine, setOnlyMine] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [resolving, setResolving] = useState<CorrectiveRow | null>(null);
+  const [resolutionText, setResolutionText] = useState("");
+  const [resolveSaving, setResolveSaving] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<CorrectiveRow | null>(null);
@@ -37,7 +42,7 @@ export default function CorrectivePage() {
     severity: "High",
     status: "Reported",
     rootCause: "",
-    resolutionNotes: "",
+    resolutionDetail: "",
     dueDate: "",
     customerId: "",
     partnerId: "",
@@ -47,10 +52,15 @@ export default function CorrectivePage() {
   });
 
   const loadItems = useCallback(async () => {
-    const res = await fetch("/api/maintenance/corrective", { cache: "no-store" });
-    if (res.ok) {
-      const data = await res.json();
-      setItems(data.items ?? []);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/maintenance/corrective", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setItems(data.items ?? []);
+      }
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -61,7 +71,6 @@ export default function CorrectivePage() {
   const filtered = useMemo(() => {
     return items
       .filter((i) => {
-        if (onlyMine && user && i.assigneeId !== user.id) return false;
         if (sevFilter !== "ALL" && i.severity !== sevFilter) return false;
         const q = search.toLowerCase().trim();
         if (!q) return true;
@@ -69,8 +78,8 @@ export default function CorrectivePage() {
           .toLowerCase()
           .includes(q);
       })
-      .sort((a, b) => (sortDir === "asc" ? a.id - b.id : b.id - a.id));
-  }, [items, onlyMine, user, sevFilter, search, sortDir]);
+      .sort((a, b) => b.id - a.id);
+  }, [items, sevFilter, search]);
 
   const openCount = items.filter((i) => i.status !== "Resolved").length;
   const resolvedCount = items.filter((i) => i.status === "Resolved").length;
@@ -79,13 +88,14 @@ export default function CorrectivePage() {
 
   const openCreate = () => {
     setEditing(null);
+    setPendingFiles([]);
     setForm({
       title: "",
       description: "",
       severity: "High",
       status: "Reported",
       rootCause: "",
-      resolutionNotes: "",
+      resolutionDetail: "",
       dueDate: new Date(Date.now() + 2 * 86400_000).toISOString().slice(0, 10),
       customerId: lookups?.customers[0]?.id ? String(lookups.customers[0].id) : "",
       partnerId: "",
@@ -117,7 +127,7 @@ export default function CorrectivePage() {
       severity: found.severity,
       status: found.status,
       rootCause: found.rootCause ?? "",
-      resolutionNotes: found.resolutionNotes ?? "",
+      resolutionDetail: found.resolutionDetail ?? "",
       dueDate: found.dueDate ? new Date(found.dueDate).toISOString().slice(0, 10) : "",
       customerId: found.customerId ? String(found.customerId) : "",
       partnerId: found.partnerId ? String(found.partnerId) : "",
@@ -138,7 +148,7 @@ export default function CorrectivePage() {
         severity: form.severity,
         status: form.status,
         rootCause: form.rootCause || null,
-        resolutionNotes: form.resolutionNotes || null,
+        resolutionDetail: form.resolutionDetail || null,
         dueDate: form.dueDate || null,
         customerId: form.customerId ? Number(form.customerId) : null,
         partnerId: form.partnerId ? Number(form.partnerId) : null,
@@ -159,7 +169,13 @@ export default function CorrectivePage() {
         notify(err.error || "Failed to save ticket", "error");
         return;
       }
+      if (!editing && pendingFiles.length > 0) {
+        const { item } = await res.json();
+        const failed = await uploadAttachments("corrective", item.id, pendingFiles);
+        if (failed.length) notify(`Ticket created, but these files failed to upload: ${failed.join(", ")}`, "error");
+      }
       notify(editing ? "Corrective ticket updated" : "Corrective ticket created");
+      setPendingFiles([]);
       setModalOpen(false);
       await Promise.all([loadItems(), refreshLookups()]);
     } finally {
@@ -167,15 +183,31 @@ export default function CorrectivePage() {
     }
   };
 
-  const handleMoveStage = async (id: number, nextStage: string) => {
-    const res = await fetch(`/api/maintenance/corrective/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: nextStage }),
-    });
-    if (res.ok) {
-      notify(`Ticket moved to ${nextStage}`);
+  const openResolve = (row: CorrectiveRow | null) => {
+    if (!row || row.status === "Resolved") return;
+    setResolutionText(row.resolutionDetail ?? "");
+    setResolving(row);
+  };
+
+  const submitResolve = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resolving || !resolutionText.trim()) return;
+    setResolveSaving(true);
+    try {
+      const res = await fetch(`/api/maintenance/corrective/${resolving.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "Resolved", resolutionDetail: resolutionText.trim() }),
+      });
+      if (!res.ok) {
+        notify((await res.json().catch(() => ({}))).error || "Could not resolve ticket", "error");
+        return;
+      }
+      notify(`${resolving.ticketCode} resolved`);
+      setResolving(null);
       await Promise.all([loadItems(), refreshLookups()]);
+    } finally {
+      setResolveSaving(false);
     }
   };
 
@@ -189,11 +221,6 @@ export default function CorrectivePage() {
     } else {
       notify("Missing permission to delete", "error");
     }
-  };
-
-  const nextStage = (status: string) => {
-    const idx = STAGES.indexOf(status as (typeof STAGES)[number]);
-    return idx >= 0 && idx < STAGES.length - 1 ? STAGES[idx + 1] : null;
   };
 
   const deleteRow = async (row: CorrectiveRow | null) => {
@@ -229,7 +256,7 @@ export default function CorrectivePage() {
     { key: "serviceCode", header: "Service", width: 130 },
     { key: "assigneeName", header: "Owner", width: 150, value: (r) => r.assigneeName ?? "Unassigned" },
     { key: "dueDate", header: "SLA Due", width: 110, value: (r) => r.dueDate ?? "", render: (r) => formatShortDate(r.dueDate) },
-    { key: "commentCount", header: "Notes", width: 70, align: "right" },
+    { key: "createdAt", header: "Created On", width: 120, render: (r) => formatShortDate(r.createdAt) },
   ];
 
   return (
@@ -245,28 +272,20 @@ export default function CorrectivePage() {
           onSearchChange={setSearch}
           searchPlaceholder="Search incident, customer, service..."
           onRefresh={() => void loadItems()}
+          loading={loading}
+          emptyMessage={search || sevFilter !== "ALL" ? "No tickets match your filters" : "No corrective tickets yet — click New to log the first one"}
           onOpen={(r) => openEditById(r.id)}
           rowTone={(r) => (r.severity === "Critical" && r.status !== "Resolved" ? "critical" : undefined)}
           actions={[
             { label: "New", onClick: openCreate, hidden: !can("maintenance:write") },
             { label: "Open", needsSelection: true, onClick: (r) => r && openEditById(r.id) },
             {
-              label: "Advance",
-              needsSelection: true,
-              hidden: !can("maintenance:write"),
-              onClick: (r) => {
-                const n = r && nextStage(r.status);
-                if (r && n) void handleMoveStage(r.id, n);
-              },
-            },
-            {
               label: "Resolve",
               needsSelection: true,
               hidden: !can("maintenance:write"),
-              onClick: (r) => r && r.status !== "Resolved" && void handleMoveStage(r.id, "Resolved"),
+              onClick: (r) => openResolve(r),
             },
             { label: "Delete", needsSelection: true, tone: "danger", hidden: !can("maintenance:delete"), onClick: (r) => void deleteRow(r) },
-            { label: "My Items", active: onlyMine, onClick: () => setOnlyMine((m) => !m) },
           ]}
           filters={
             <GridSelect
@@ -286,7 +305,7 @@ export default function CorrectivePage() {
                 ["Description", r.description],
                 ["Assigned Engineer", r.assigneeName ? `${r.assigneeName}${r.assigneeJobTitle ? ` · ${r.assigneeJobTitle}` : ""}` : "Unassigned"],
                 ["Root Cause", r.rootCause],
-                ["Resolution", r.resolutionNotes],
+                ["Resolution", r.resolutionDetail],
               ]}
             />
           )}
@@ -302,8 +321,10 @@ export default function CorrectivePage() {
         entityId={editing?.id}
         canDelete={Boolean(editing && can("maintenance:delete"))}
         onDelete={handleDelete}
+        size="wide"
+        showComments={false}
       >
-        <form onSubmit={handleSave} className="space-y-4">
+        <form onSubmit={handleSave} data-record-form className="space-y-4">
           <FieldLabel label="Incident Title" required>
             <input
               type="text"
@@ -415,19 +436,53 @@ export default function CorrectivePage() {
               placeholder="Hardware fault, ISP degradation, config drift..."
             />
           </FieldLabel>
-          <FieldLabel label="Resolution Notes">
+          <FieldLabel label="Resolution Detail" required={form.status === "Resolved"}>
             <textarea
               rows={2}
-              value={form.resolutionNotes}
-              onChange={(e) => setForm({ ...form, resolutionNotes: e.target.value })}
+              required={form.status === "Resolved"}
+              placeholder={form.status === "Resolved" ? "Required to resolve: what was done to fix it?" : "Filled in when the ticket is resolved"}
+              value={form.resolutionDetail}
+              onChange={(e) => setForm({ ...form, resolutionDetail: e.target.value })}
               className={inputClass}
             />
           </FieldLabel>
+          <AttachmentsPanel
+            entityType="corrective"
+            entityId={editing?.id ?? null}
+            canEdit={can("maintenance:write")}
+            pending={pendingFiles}
+            onPendingChange={setPendingFiles}
+          />
           {can("maintenance:write") && (
             <FormActions onCancel={() => setModalOpen(false)} saving={saving} />
           )}
         </form>
+        {editing && <ActivityHistory entityType="corrective" entityId={editing.id} canEdit={can("maintenance:write")} />}
       </RecordModal>
+
+      <Dialog open={Boolean(resolving)} title={resolving ? `Resolve ${resolving.ticketCode}` : "Resolve"} onClose={() => setResolving(null)}>
+        <form onSubmit={submitResolve} className="space-y-3">
+          {resolving && <p className="text-[13px] text-[#4B5563]">{resolving.title}</p>}
+          <FieldLabel label="Resolution Detail" required>
+            <textarea
+              rows={5}
+              required
+              maxLength={5000}
+              value={resolutionText}
+              onChange={(e) => setResolutionText(e.target.value)}
+              placeholder="What was the fix? e.g. Replaced faulty SFP on core switch port Gi1/0/24, verified link stable for 30 minutes."
+              className={inputClass}
+            />
+          </FieldLabel>
+          <p className="text-[12px] text-[#6B7280]">The assigned engineer is emailed and the resolution is recorded in Activity History.</p>
+          <div className="flex justify-end gap-1">
+            <TextButton onClick={() => setResolving(null)}>Cancel</TextButton>
+            <TextButton type="submit" tone="primary" disabled={resolveSaving || !resolutionText.trim()}>
+              {resolveSaving ? "Resolving..." : "Resolve"}
+            </TextButton>
+          </div>
+        </form>
+      </Dialog>
     </AppShell>
   );
 }

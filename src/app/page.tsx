@@ -11,8 +11,9 @@ import { Mono, Pill, severityTone } from "@/components/grid/cells";
 import { ChartCard, EmptyChart } from "@/components/dashboard/ChartCard";
 import { DonutChart } from "@/components/dashboard/DonutChart";
 import { GroupedBarChart, StackedBarChart } from "@/components/dashboard/BarCharts";
-import { SERIES, compactNumber } from "@/components/dashboard/chartUtils";
-import { formatCurrency, formatDateTime, formatShortDate } from "@/lib/utils";
+import { SERIES } from "@/components/dashboard/chartUtils";
+import { formatCurrency, formatCurrencyCompact, formatDateTime, formatShortDate, formatUsd } from "@/lib/utils";
+import type { ExchangeRateInfo } from "@/shared/types";
 
 interface DashboardPayload {
   metrics: {
@@ -28,7 +29,7 @@ interface DashboardPayload {
     openPipelineValue: number;
     activeServices: number;
     expiringServices: number;
-    monthlyRecurringUsd: number;
+    monthlyRecurringIdr: number;
     scheduledEvents: number;
   };
   pipelineByStage: Array<{ stage: string; count: number; value: number }>;
@@ -45,22 +46,46 @@ type Tab = (typeof TABS)[number];
 
 const STAGE_COLORS = [SERIES.blue, SERIES.orange, SERIES.aqua, SERIES.yellow];
 
-const usd = (n: number) => `$${compactNumber(n)}`;
 
 export default function DashboardPage() {
   const { user, can } = useAuth();
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [tab, setTab] = useState<Tab>("Overview");
   const [weeks, setWeeks] = useState(8);
+  const [loading, setLoading] = useState(true);
+  const [fx, setFx] = useState<ExchangeRateInfo | null>(null);
+  const [fxState, setFxState] = useState<"loading" | "ready" | "unavailable">("loading");
 
   const loadDashboard = useCallback(async () => {
-    const res = await fetch("/api/dashboard", { cache: "no-store" });
-    if (res.ok) setData(await res.json());
+    setLoading(true);
+    try {
+      const res = await fetch("/api/dashboard", { cache: "no-store" });
+      if (res.ok) setData(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Exchange rate loads separately so a slow Bank Indonesia response never blocks the dashboard.
+  const loadFx = useCallback(async () => {
+    setFxState("loading");
+    try {
+      const res = await fetch("/api/fx");
+      const rate = res.ok ? ((await res.json()).rate as ExchangeRateInfo | null) : null;
+      setFx(rate);
+      setFxState(rate ? "ready" : "unavailable");
+    } catch {
+      setFxState("unavailable");
+    }
   }, []);
 
   useEffect(() => {
-    if (user) void loadDashboard();
-  }, [user, loadDashboard]);
+    if (!user) return;
+    void loadDashboard();
+    void loadFx();
+  }, [user, loadDashboard, loadFx]);
+
+  const toUsd = (idr: number) => (fx ? ` ≈ ${formatUsd(idr / fx.rate)}` : "");
 
   const m = data?.metrics;
 
@@ -147,8 +172,15 @@ export default function DashboardPage() {
                   Reports
                 </Link>
               )}
-              <button type="button" onClick={() => void loadDashboard()} title="Refresh" aria-label="Refresh" className="h-8 w-8 flex items-center justify-center text-[#1668AC] hover:text-[#0F4F86]">
-                <RefreshCw className="w-4 h-4" />
+              <button
+                type="button"
+                onClick={() => void loadDashboard()}
+                disabled={loading}
+                title="Refresh"
+                aria-label="Refresh"
+                className="h-8 w-8 flex items-center justify-center text-[#1668AC] hover:text-[#0F4F86] disabled:opacity-60"
+              >
+                <RefreshCw className={loading ? "w-4 h-4 animate-spin" : "w-4 h-4"} />
               </button>
             </div>
             <GridSelect
@@ -162,6 +194,7 @@ export default function DashboardPage() {
               ]}
             />
           </div>
+          <ExchangeRateNote fx={fx} state={fxState} />
         </section>
 
         <KpiStrip
@@ -182,7 +215,7 @@ export default function DashboardPage() {
             },
             {
               label: "Monthly recurring",
-              value: formatCurrency(m?.monthlyRecurringUsd ?? 0),
+              value: loading && !m ? "…" : formatCurrency(m?.monthlyRecurringIdr ?? 0),
               note: m && m.expiringServices > 0 ? `${m.expiringServices} contracts expiring in 30 days` : `${m?.activeServices ?? 0} active services`,
               tone: m && m.expiringServices > 0 ? "warn" : "neutral",
               href: "/services",
@@ -197,11 +230,11 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               <ChartCard
                 title="Pipeline by stage"
-                subtitle={`${formatCurrency(pipelineTotal)} total · ${formatCurrency(m?.closedDealValue ?? 0)} closed`}
+                subtitle={`${formatCurrency(pipelineTotal)} total${toUsd(pipelineTotal)} · ${formatCurrency(m?.closedDealValue ?? 0)} closed`}
                 href="/pipeline"
               >
                 {pipelineTotal > 0 ? (
-                  <DonutChart slices={pipelineSlices} centerLabel="Total pipeline" formatValue={usd} />
+                  <DonutChart slices={pipelineSlices} centerLabel="Total pipeline" formatValue={formatCurrencyCompact} />
                 ) : (
                   <EmptyChart message="No pipeline deals yet" />
                 )}
@@ -266,5 +299,33 @@ export default function DashboardPage() {
         )}
       </GridPage>
     </AppShell>
+  );
+}
+
+/** Reference USD/IDR rate (information only — every amount in VMS is in Rupiah). */
+function ExchangeRateNote({ fx, state }: { fx: ExchangeRateInfo | null; state: "loading" | "ready" | "unavailable" }) {
+  const id = (n: number) => n.toLocaleString("id-ID", { maximumFractionDigits: 2 });
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 border-t border-[#E9ECEF] bg-[#F6F7F8] text-[12px] text-[#4B5563]">
+      {state === "loading" && <span className="skeleton h-3 w-72 rounded-sm" aria-label="Loading exchange rate" />}
+      {state === "unavailable" && <span>USD/IDR reference rate is unavailable right now.</span>}
+      {state === "ready" && fx && (
+        <>
+          <span>
+            <span className="font-semibold text-[#2B3036]">USD 1 = Rp {id(fx.rate)}</span>
+            {fx.official ? " (kurs tengah)" : ""}
+          </span>
+          {fx.buy !== null && fx.sell !== null && (
+            <span>
+              Beli Rp {id(fx.buy)} · Jual Rp {id(fx.sell)}
+            </span>
+          )}
+          <span>
+            {fx.source} · {formatShortDate(fx.date)}
+          </span>
+          <span className="text-[#6B7280]">For information only — all amounts are in Rupiah.</span>
+        </>
+      )}
+    </div>
   );
 }

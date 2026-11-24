@@ -12,23 +12,23 @@ interface ReportData {
   summary: {
     totalCustomers: number;
     totalServices: number;
-    monthlyRecurringUsd: number;
+    monthlyRecurringIdr: number;
     pmCompliancePct: number;
     avgImpProgress: number;
     pocSuccessPct: number;
-    totalPipelineUsd: number;
-    closedPipelineUsd: number;
+    totalPipelineIdr: number;
+    closedPipelineIdr: number;
     alertsDispatched: number;
   };
   cmByStatus: Record<string, number>;
   cmBySeverity: Record<string, number>;
-  pipelineByStage: Array<{ stage: string; count: number; valueUsd: number }>;
+  pipelineByStage: Array<{ stage: string; count: number; valueIdr: number }>;
   expiringServices: Array<{
     id: number;
     serviceNumber: string;
     title: string;
     slaTier: string;
-    monthlyFeeUsd: number;
+    monthlyFeeIdr: number;
     endDate: string;
   }>;
   recentAlerts: Array<{
@@ -198,7 +198,7 @@ export default function ReportsPage() {
                       {row.stage} ({row.count})
                     </span>
                     <span className="font-semibold tabular-nums text-[#2B3036]">
-                      {formatCurrency(row.valueUsd)}
+                      {formatCurrency(row.valueIdr)}
                     </span>
                   </div>
                   <div className="h-1.5 rounded-full bg-[#E9ECEF] overflow-hidden">
@@ -207,8 +207,8 @@ export default function ReportsPage() {
                       style={{
                         width: `${Math.min(
                           100,
-                          s?.totalPipelineUsd
-                            ? Math.round((row.valueUsd / s.totalPipelineUsd) * 100)
+                          s?.totalPipelineIdr
+                            ? Math.round((row.valueIdr / s.totalPipelineIdr) * 100)
                             : 0
                         )}%`,
                       }}
@@ -237,7 +237,7 @@ export default function ReportsPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-[#4B5563]">Managed Service MRR</span>
                   <span className="font-semibold tabular-nums">
-                    {formatCurrency(s?.monthlyRecurringUsd ?? 0)}
+                    {formatCurrency(s?.monthlyRecurringIdr ?? 0)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -276,7 +276,7 @@ export default function ReportsPage() {
                   <div className="flex items-center gap-4 text-[12px]">
                     <span className="px-2 py-0.5 rounded bg-[#EEF1F4]">{srv.slaTier}</span>
                     <span className="font-medium tabular-nums">
-                      {formatCurrency(srv.monthlyFeeUsd)}/mo
+                      {formatCurrency(srv.monthlyFeeIdr)}/mo
                     </span>
                     <span className="text-amber-700 font-medium">
                       Ends {formatShortDate(srv.endDate)}

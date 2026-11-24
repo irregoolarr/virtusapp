@@ -3,44 +3,8 @@
 import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
-
-// Set NEXT_PUBLIC_DEMO_LOGIN="false" (e.g. on a public Vercel URL) to hide the one-click demo sign-in.
-const SHOW_DEMO_LOGINS = process.env.NEXT_PUBLIC_DEMO_LOGIN !== "false";
-
-const DEMO_ACCOUNTS = [
-  {
-    name: "Iona Rollins",
-    email: "iona@virtusms.io",
-    role: "Super Admin",
-    desc: "Full platform, RBAC & SMTP control",
-  },
-  {
-    name: "Sandra Perry",
-    email: "sandra@virtusms.io",
-    role: "Service Manager",
-    desc: "Operations, SLA, alerts & team leads",
-  },
-  {
-    name: "Jamal Connolly",
-    email: "jamal@virtusms.io",
-    role: "Field Engineer",
-    desc: "Corrective, preventive, implementations",
-  },
-  {
-    name: "Antony Cardenas",
-    email: "antony@virtusms.io",
-    role: "Account Lead",
-    desc: "Customers, partners, pipeline & services",
-  },
-  {
-    name: "Marcus Vance",
-    email: "marcus@virtusms.io",
-    role: "Viewer",
-    desc: "Read-only audit & compliance view",
-  },
-];
 
 export default function LoginPage() {
   const { user, refreshAuth } = useAuth();
@@ -50,7 +14,6 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showForgotHelp, setShowForgotHelp] = useState(false);
   const [showSsoNotice, setShowSsoNotice] = useState(false);
-  const [showDemoProfiles, setShowDemoProfiles] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -186,9 +149,7 @@ export default function LoginPage() {
 
             {showForgotHelp && (
               <div className="rounded-[8px] border border-[#E4E4E7] bg-[#F4F4F5] px-3 py-2.5 text-[12px] leading-relaxed text-[#52525B]">
-                Contact your Super Admin (
-                <span className="font-medium text-[#18181B]">iona@virtusms.io</span>
-                ) to reset credentials in User Management, or sign in using a Demo RBAC profile below.
+                Contact your administrator to reset your password in User Management.
               </div>
             )}
 
@@ -238,62 +199,10 @@ export default function LoginPage() {
 
             {showSsoNotice && (
               <div className="rounded-[8px] border border-[#E4E4E7] bg-[#F4F4F5] px-3 py-2 text-[12px] text-[#52525B]">
-                Microsoft Entra SSO is not configured on this local instance yet. Please use your email and password or a Demo RBAC profile below.
+                Microsoft Entra SSO is not configured on this local instance yet. Please sign in with your email and password.
               </div>
             )}
 
-            {SHOW_DEMO_LOGINS && (
-            <button
-              type="button"
-              onClick={() => setShowDemoProfiles((prev) => !prev)}
-              aria-expanded={showDemoProfiles}
-              className="w-full rounded-[8px] border border-[#D4D4D8] bg-white hover:bg-[#F4F4F5]/60 px-3.5 py-2.5 text-[13px] font-medium text-[#18181B] flex items-center justify-between gap-2 transition-colors"
-            >
-              <span className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-[#2F6F98] shrink-0" />
-                <span>Quick Demo Sign-In (RBAC Profiles)</span>
-              </span>
-              <ChevronDown
-                className={`w-4 h-4 text-[#52525B] transition-transform ${
-                  showDemoProfiles ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-            )}
-
-            {SHOW_DEMO_LOGINS && showDemoProfiles && (
-              <div className="rounded-[10px] border border-[#D4D4D8] bg-white p-2 space-y-1.5">
-                <div className="px-2 pt-1 pb-0.5 text-[11px] font-medium text-[#52525B]">
-                  Password for all seeded roles:{" "}
-                  <span className="font-mono text-[#18181B]">virtus123</span>
-                </div>
-                {DEMO_ACCOUNTS.map((acc) => (
-                  <button
-                    key={acc.email}
-                    type="button"
-                    disabled={submitting}
-                    onClick={() => {
-                      setEmail(acc.email);
-                      setPassword("virtus123");
-                      void signIn(acc.email, "virtus123");
-                    }}
-                    className="w-full text-left rounded-[8px] border border-transparent hover:border-[#D4D4D8] hover:bg-[#FFFFFF] px-2.5 py-2 transition-colors disabled:opacity-50"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[12.5px] font-semibold text-[#18181B]">
-                        {acc.name}
-                      </span>
-                      <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-full bg-[#F4F4F5] text-[#2F6F98] border border-[#E4E4E7]">
-                        {acc.role}
-                      </span>
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-[#52525B] truncate">
-                      {acc.email} · {acc.desc}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
 
           <footer className="mt-7 text-center text-[11.5px] leading-[1.6] text-[#A1A1AA]">

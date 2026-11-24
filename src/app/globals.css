@@ -37,3 +37,38 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #bebeb4;
 }
+
+/* ---- Motion (short, purposeful; disabled for users who prefer reduced motion) ---- */
+@keyframes grid-fade {
+  from { opacity: 0.35; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+@keyframes progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes drawer-in {
+  from { transform: translateX(24px); opacity: 0.6; }
+  to { transform: none; opacity: 1; }
+}
+.grid-fade { animation: grid-fade 180ms ease-out; }
+.skeleton {
+  background: linear-gradient(90deg, #e9ecef 0px, #f6f7f8 120px, #e9ecef 240px);
+  background-size: 800px 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+.progress-bar { animation: progress-slide 1s ease-in-out infinite; }
+.dialog-in { animation: dialog-in 160ms ease-out; }
+.drawer-in { animation: drawer-in 180ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .grid-fade, .skeleton, .progress-bar, .dialog-in, .drawer-in, .animate-spin { animation: none !important; }
+}

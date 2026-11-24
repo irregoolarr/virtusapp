@@ -14,7 +14,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx src/db/seed.ts",
     "test": "tsx --test tests/*.test.ts",
-    "db:setup": "drizzle-kit push && tsx src/db/seed.ts"
+    "db:setup": "drizzle-kit push && tsx src/db/seed.ts",
+    "db:reset": "tsx src/db/reset.ts && drizzle-kit push --force && tsx src/db/seed.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",

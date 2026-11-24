@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { ZodType, ZodTypeDef } from "zod";
 import { AuthenticatedUser, requireApiAuth } from "@/lib/auth";
-import type { PermissionKey } from "@/lib/rbac";
+import { hasPermission, type PermissionKey } from "@/lib/rbac";
 import type { Wire } from "@/shared/types";
 
 /** Error thrown by services; turned into `{ error, details }` with its status. */
@@ -89,4 +89,9 @@ export function definedFields<T extends object, K extends keyof T>(source: T, ke
   const out: Partial<Pick<T, K>> = {};
   for (const k of keys) if (source[k] !== undefined) out[k] = source[k];
   return out;
+}
+
+/** Permission check for routes whose required permission depends on the request. */
+export function requirePermission(user: AuthenticatedUser, permission: PermissionKey): void {
+  if (!hasPermission(user.permissions, permission)) throw new ApiError(403, `Missing permission: ${permission}`);
 }

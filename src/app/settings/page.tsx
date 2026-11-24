@@ -29,7 +29,7 @@ export default function SettingsPage() {
     companyName: "VirtusMS Managed Services",
     defaultSlaWarningDays: 30,
     autoEscalateCriticalMinutes: 30,
-    currencySymbol: "$",
+    currencySymbol: "Rp",
   });
 
   const loadSettings = useCallback(async () => {

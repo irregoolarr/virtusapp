@@ -136,12 +136,15 @@ docker compose version  # If using Docker
      SQL
      ```
 
-4. **Install dependencies, push schema, and seed demo data:**
+4. **Install dependencies, create the tables and the first admin:**
    ```bash
    pnpm install
    pnpm db:push
-   pnpm db:seed
+   ADMIN_EMAIL="you@company.com" ADMIN_PASSWORD="at-least-8-chars" ADMIN_NAME="Your Name" pnpm db:seed
    ```
+   The database starts **empty**: only the 5 default roles and this one Super Admin are created.
+   Add your team in **User Management** after signing in.
+   You can also put `ADMIN_*` in `.env.local` and load it with `set -a; . ./.env.local; set +a`.
 
 5. **Run the application:**
    - **Development mode:**
@@ -186,17 +189,21 @@ Vercel can't reach `localhost`. In the project go to **Storage → Create Databa
 | `DATABASE_URL` | Added by Neon (or paste your pooled URL) |
 | `SESSION_SECRET` | Random string, e.g. `openssl rand -hex 32` |
 | `CRON_SECRET` | Random string, e.g. `openssl rand -hex 32` |
-| `NEXT_PUBLIC_DEMO_LOGIN` | `false` to hide one-click demo sign-in on the public URL |
+| `GOOGLE_DRIVE_*` | Optional. Store attachments in Google Drive (see **Attachments & Google Drive**) |
 | `SMTP_*` | Optional. Can also be set later in the app's **Settings** page |
 
 ### 4. Create tables and seed data (once per database)
 Run this from your machine, pointing at the cloud database:
 ```bash
 DATABASE_URL="postgresql://...neon.tech/neondb?sslmode=require" \
-SEED_PASSWORD="choose-a-strong-password" \
-pnpm db:setup        # = drizzle-kit push + seed
+ADMIN_EMAIL="you@company.com" ADMIN_PASSWORD="a-strong-password" ADMIN_NAME="Your Name" \
+pnpm db:setup        # = drizzle-kit push + create roles and the first Super Admin
 ```
-> The repo is public and the default demo password is `virtus123`. Use `SEED_PASSWORD` for any internet-reachable deployment.
+
+To wipe a database and start from zero again (all data is lost — back it up first with `pg_dump`):
+```bash
+DATABASE_URL="..." CONFIRM_RESET=yes ADMIN_EMAIL="..." ADMIN_PASSWORD="..." pnpm db:reset
+```
 
 Then click **Deploy** (or **Redeploy**). Open `https://<project>.vercel.app/login`.
 
@@ -251,12 +258,29 @@ src/
 
 **Splitting into two projects later:** `src/app` (minus `api`) + `src/components` + `src/shared` become the frontend; `src/server` + `src/db` + `src/lib` + `src/shared` + the route files become the backend. The frontend already only speaks HTTP.
 
-## Demo Login Profiles
+## Currency
 
-All seeded users use password **`virtus123`** (or the `SEED_PASSWORD` you seeded with). Locally you can also click any profile card on `/login`:
+All amounts (deal value, monthly fee, unit price, MRR) are stored and shown in **Rupiah (IDR)**, as whole rupiah in `bigint` columns.
+The dashboard shows a USD/IDR reference line from **Bank Indonesia — Kurs Transaksi BI** (`wskursbi.asmx`, middle of buy/sell),
+cached for 6 hours, with `open.er-api.com` as a labelled fallback when BI cannot be reached. USD is information only.
 
-- `iona@virtusms.io` — **Super Admin**
-- `sandra@virtusms.io` — **Service Manager**
-- `jamal@virtusms.io` — **Field Engineer**
-- `antony@virtusms.io` — **Account Lead**
-- `marcus@virtusms.io` — **Viewer** (read-only)
+## Attachments & Google Drive
+
+Corrective Maintenance tickets accept attachments (max 4 MB per file — Vercel's request limit; executable/HTML/SVG files are refused).
+Downloads always go through the app, so access stays permission-checked.
+
+- **Without Google Drive configured** files are stored in the database (`attachments.content`). Fine for testing.
+- **With Google Drive** files go to `VirtusMS Attachments/Corrective Maintenance/<CM code>/` in the connected Google account.
+
+**Connect Google Drive (one-time, ~10 minutes):**
+1. [Google Cloud Console](https://console.cloud.google.com/) → create a project → **APIs & Services → Library** → enable **Google Drive API**.
+2. **OAuth consent screen** → External (or Internal for Workspace) → add your account as a test user → add scope `https://www.googleapis.com/auth/drive.file`.
+   Publish the app to *In production* afterwards, otherwise refresh tokens of "Testing" apps expire after 7 days.
+3. **Credentials → Create credentials → OAuth client ID** → *Web application* → authorized redirect URI `https://developers.google.com/oauthplayground`. Copy the client ID and secret.
+4. Open the [OAuth 2.0 Playground](https://developers.google.com/oauthplayground) → ⚙️ → *Use your own OAuth credentials* (paste ID/secret) →
+   scope `https://www.googleapis.com/auth/drive.file` → **Authorize APIs** with the Google account that should own the files → **Exchange authorization code for tokens** → copy the **refresh token**.
+5. Set on Vercel (and in `.env.local` for local dev): `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN`
+   (optional `GOOGLE_DRIVE_FOLDER_ID` — only works with the full `drive` scope; with `drive.file` the app creates its own folder). Redeploy.
+
+The `drive.file` scope only lets the app see files it created — it cannot read the rest of the Drive.
+Files uploaded before Drive was connected stay in the database; new uploads go to Drive.

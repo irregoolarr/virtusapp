@@ -11,7 +11,7 @@ const DEFAULT_OPS = {
   companyName: "VirtusMS Managed Services",
   defaultSlaWarningDays: 30,
   autoEscalateCriticalMinutes: 30,
-  currencySymbol: "$",
+  currencySymbol: "Rp",
 };
 
 async function upsertSetting(key: string, value: Record<string, unknown>) {

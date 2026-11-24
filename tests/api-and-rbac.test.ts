@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 const BASE_URL = process.env.TEST_BASE_URL ?? "http://127.0.0.1:3000";
+// The database starts empty except for the bootstrap admin (see src/db/seed.ts).
+const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL ?? "";
+const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD ?? "";
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  throw new Error("Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD (the bootstrap Super Admin) to run the tests.");
+}
 
 async function api(path: string, options: RequestInit = {}, cookie?: string) {
   const headers = new Headers(options.headers);
@@ -24,7 +30,7 @@ async function api(path: string, options: RequestInit = {}, cookie?: string) {
   return { res, status: res.status, json, text };
 }
 
-async function loginAs(email: string, password = "virtus123"): Promise<string> {
+async function loginAs(email: string, password = ADMIN_PASSWORD): Promise<string> {
   const { res, status, json } = await api("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
@@ -86,8 +92,28 @@ test("Health & authentication boundary checks", async () => {
   }
 });
 
+/** Create a throw-away user with the given role; returns its id, email and password. */
+async function createTempUser(adminCookie: string, roleSlug: string) {
+  const roles = await api("/api/roles", {}, adminCookie);
+  const role = (roles.json as { items: Array<{ id: number; slug: string }> }).items.find((r) => r.slug === roleSlug);
+  assert.ok(role, `role ${roleSlug} must exist`);
+  const email = `test-${roleSlug}-${Date.now()}@vms-test.example`;
+  const password = "test-password-123";
+  const res = await api(
+    "/api/users",
+    { method: "POST", body: JSON.stringify({ name: `Test ${roleSlug}`, email, password, jobTitle: "QA", roleId: role.id }) },
+    adminCookie
+  );
+  assert.equal(res.status, 201, JSON.stringify(res.json));
+  return { id: (res.json as { item: { id: number } }).item.id, email, password };
+}
+
 test("RBAC enforcement across Viewer, Field Engineer, and Super Admin", async () => {
-  const viewerCookie = await loginAs("marcus@virtusms.io");
+  const adminCookie = await loginAs(ADMIN_EMAIL);
+  const viewer = await createTempUser(adminCookie, "viewer");
+  const engineer = await createTempUser(adminCookie, "field_engineer");
+
+  const viewerCookie = await loginAs(viewer.email, viewer.password);
   const dash = await api("/api/dashboard", {}, viewerCookie);
   assert.equal(dash.status, 200);
 
@@ -107,7 +133,7 @@ test("RBAC enforcement across Viewer, Field Engineer, and Super Admin", async ()
   const settingsDeny = await api("/api/settings", {}, viewerCookie);
   assert.equal(settingsDeny.status, 403);
 
-  const engineerCookie = await loginAs("jamal@virtusms.io");
+  const engineerCookie = await loginAs(engineer.email, engineer.password);
   const engCreateCm = await api(
     "/api/maintenance/corrective",
     {
@@ -148,17 +174,21 @@ test("RBAC enforcement across Viewer, Field Engineer, and Super Admin", async ()
   );
   assert.equal(engUserDeny.status, 403);
 
-  const adminCookie = await loginAs("iona@virtusms.io");
   const cleanup = await api(
     `/api/maintenance/corrective/${createdId}`,
     { method: "DELETE" },
     adminCookie
   );
   assert.equal(cleanup.status, 200);
+
+  for (const u of [viewer, engineer]) {
+    const del = await api(`/api/users/${u.id}`, { method: "DELETE" }, adminCookie);
+    assert.equal(del.status, 200);
+  }
 });
 
 test("All modules CRUD, Comments, Event Reminder Alerting & Reporting CSV flow", async () => {
-  const adminCookie = await loginAs("iona@virtusms.io");
+  const adminCookie = await loginAs(ADMIN_EMAIL);
 
   // 1. Business Partner & Customer CRUD
   const ptrRes = await api(
@@ -210,7 +240,7 @@ test("All modules CRUD, Comments, Event Reminder Alerting & Reporting CSV flow",
         partnerId,
         description: "Test managed solution",
         slaTargetHours: 2,
-        unitPriceUsd: 900,
+        unitPriceIdr: 900,
       }),
     },
     adminCookie
@@ -228,7 +258,7 @@ test("All modules CRUD, Comments, Event Reminder Alerting & Reporting CSV flow",
         category: "Managed Network",
         slaTier: "24x7 Platinum",
         status: "Active",
-        monthlyFeeUsd: 1200,
+        monthlyFeeIdr: 1200,
         startDate: "2026-01-01",
         endDate: "2026-12-31",
         customerId,
@@ -304,7 +334,7 @@ test("All modules CRUD, Comments, Event Reminder Alerting & Reporting CSV flow",
         title: "Test Pipeline Deal",
         description: "Managed expansion",
         stage: "Contacted",
-        dealValueUsd: 5000,
+        dealValueIdr: 5000,
         customerId,
       }),
     },
@@ -409,4 +439,74 @@ test("All modules CRUD, Comments, Event Reminder Alerting & Reporting CSV flow",
   await api(`/api/products/${productId}`, { method: "DELETE" }, adminCookie);
   await api(`/api/customers/${customerId}`, { method: "DELETE" }, adminCookie);
   await api(`/api/partners/${partnerId}`, { method: "DELETE" }, adminCookie);
+});
+
+test("Corrective: resolution detail, activity history, attachments", async () => {
+  const adminCookie = await loginAs(ADMIN_EMAIL);
+
+  const created = await api(
+    "/api/maintenance/corrective",
+    { method: "POST", body: JSON.stringify({ title: "Attachment flow test", description: "Automated", severity: "High" }) },
+    adminCookie
+  );
+  assert.equal(created.status, 201);
+  const id = (created.json as { item: { id: number; ticketCode: string } }).item.id;
+
+  // Resolving without a resolution detail is refused
+  const noDetail = await api(`/api/maintenance/corrective/${id}`, { method: "PATCH", body: JSON.stringify({ status: "Resolved" }) }, adminCookie);
+  assert.equal(noDetail.status, 400);
+
+  // Priority change is recorded
+  const prio = await api(`/api/maintenance/corrective/${id}`, { method: "PATCH", body: JSON.stringify({ severity: "Critical" }) }, adminCookie);
+  assert.equal(prio.status, 200);
+
+  // Upload, list, download, delete an attachment (database storage when Drive is not configured)
+  const form = new FormData();
+  form.set("entityType", "corrective");
+  form.set("entityId", String(id));
+  form.set("file", new Blob(["hello cm document"], { type: "text/plain" }), "cm-report.txt");
+  const upload = await fetch(`${BASE_URL}/api/attachments`, { method: "POST", body: form, headers: { cookie: adminCookie } });
+  assert.equal(upload.status, 201);
+  const attId = ((await upload.json()) as { item: { id: number } }).item.id;
+
+  const blocked = new FormData();
+  blocked.set("entityType", "corrective");
+  blocked.set("entityId", String(id));
+  blocked.set("file", new Blob(["<script>"], { type: "text/html" }), "evil.html");
+  const blockedRes = await fetch(`${BASE_URL}/api/attachments`, { method: "POST", body: blocked, headers: { cookie: adminCookie } });
+  assert.equal(blockedRes.status, 400);
+
+  const list = await api(`/api/attachments?entityType=corrective&entityId=${id}`, {}, adminCookie);
+  assert.equal((list.json as { items: unknown[] }).items.length, 1);
+
+  const download = await api(`/api/attachments/${attId}`, {}, adminCookie);
+  assert.equal(download.status, 200);
+  assert.equal(download.text, "hello cm document");
+
+  const resolved = await api(
+    `/api/maintenance/corrective/${id}`,
+    { method: "PATCH", body: JSON.stringify({ status: "Resolved", resolutionDetail: "Replaced the faulty SFP" }) },
+    adminCookie
+  );
+  assert.equal(resolved.status, 200);
+
+  const history = await api(`/api/activities?entityType=corrective&entityId=${id}`, {}, adminCookie);
+  const categories = (history.json as { items: Array<{ category: string }> }).items.map((a) => a.category);
+  for (const expected of ["Ticket Logged", "Priority Change", "Attachment Added", "Resolution"]) {
+    assert.ok(categories.includes(expected), `activity "${expected}" missing: ${categories.join(", ")}`);
+  }
+
+  // System history cannot be deleted; notes can
+  const sys = (history.json as { items: Array<{ id: number; type: string }> }).items.find((a) => a.type !== "Note");
+  assert.ok(sys);
+  const sysDel = await api(`/api/activities/${sys.id}`, { method: "DELETE" }, adminCookie);
+  assert.equal(sysDel.status, 400);
+
+  const attDel = await api(`/api/attachments/${attId}`, { method: "DELETE" }, adminCookie);
+  assert.equal(attDel.status, 200);
+
+  const cleanup = await api(`/api/maintenance/corrective/${id}`, { method: "DELETE" }, adminCookie);
+  assert.equal(cleanup.status, 200);
+  const after = await api(`/api/activities?entityType=corrective&entityId=${id}`, {}, adminCookie);
+  assert.equal((after.json as { items: unknown[] }).items.length, 0);
 });

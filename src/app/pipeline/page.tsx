@@ -35,7 +35,7 @@ export default function PipelinePage() {
     title: "",
     description: "",
     stage: "Contacted",
-    dealValueUsd: 3500,
+    dealValueIdr: 0,
     probabilityPct: 35,
     expectedCloseDate: "",
     customerId: "",
@@ -68,13 +68,13 @@ export default function PipelinePage() {
           .includes(q);
       })
       .sort((a, b) =>
-        sortDir === "asc" ? a.dealValueUsd - b.dealValueUsd : b.dealValueUsd - a.dealValueUsd
+        sortDir === "asc" ? a.dealValueIdr - b.dealValueIdr : b.dealValueIdr - a.dealValueIdr
       );
   }, [items, onlyMine, user, stageFilter, search, sortDir]);
 
   const closedValue = items
     .filter((i) => i.stage === "Deal Closed")
-    .reduce((sum, i) => sum + i.dealValueUsd, 0);
+    .reduce((sum, i) => sum + i.dealValueIdr, 0);
   const activeCount = items.filter((i) => i.stage !== "Deal Closed").length;
   const winPct =
     items.length > 0
@@ -87,7 +87,7 @@ export default function PipelinePage() {
       title: "",
       description: "",
       stage: "Contacted",
-      dealValueUsd: 3500,
+      dealValueIdr: 0,
       probabilityPct: 35,
       expectedCloseDate: new Date(Date.now() + 14 * 86400_000).toISOString().slice(0, 10),
       customerId: lookups?.customers[0]?.id ? String(lookups.customers[0].id) : "",
@@ -106,7 +106,7 @@ export default function PipelinePage() {
       title: found.title,
       description: found.description,
       stage: found.stage,
-      dealValueUsd: found.dealValueUsd,
+      dealValueIdr: found.dealValueIdr,
       probabilityPct: found.probabilityPct,
       expectedCloseDate: found.expectedCloseDate
         ? new Date(found.expectedCloseDate).toISOString().slice(0, 10)
@@ -127,7 +127,7 @@ export default function PipelinePage() {
         title: form.title,
         description: form.description,
         stage: form.stage,
-        dealValueUsd: Number(form.dealValueUsd),
+        dealValueIdr: Number(form.dealValueIdr),
         probabilityPct: Number(form.probabilityPct),
         expectedCloseDate: form.expectedCloseDate || null,
         customerId: form.customerId ? Number(form.customerId) : null,
@@ -201,7 +201,7 @@ export default function PipelinePage() {
     { key: "title", header: "Summary", width: 260, wrap: true },
     { key: "stage", header: "Stage", width: 120 },
     { key: "progress", header: "Progress", width: 100, value: (r) => STAGES.indexOf(r.stage as (typeof STAGES)[number]), render: (r) => <SegmentProgress ratio={stageRatio(STAGES, r.stage)} /> },
-    { key: "dealValueUsd", header: "Value", width: 120, align: "right", render: (r) => formatCurrency(r.dealValueUsd) },
+    { key: "dealValueIdr", header: "Value", width: 120, align: "right", render: (r) => formatCurrency(r.dealValueIdr) },
     { key: "probabilityPct", header: "Win %", width: 80, align: "right", render: (r) => `${r.probabilityPct}%` },
     { key: "assigneeName", header: "Owner", width: 150, value: (r) => r.assigneeName ?? "Unassigned" },
     { key: "expectedCloseDate", header: "Expected Close", width: 120, value: (r) => r.expectedCloseDate ?? "", render: (r) => formatShortDate(r.expectedCloseDate) },
@@ -250,7 +250,7 @@ export default function PipelinePage() {
                 ["Customer", r.customerName],
                 ["Customer Email", r.customerEmail],
                 ["Owner", r.assigneeName ?? "Unassigned"],
-                ["Weighted Value", formatCurrency(Math.round((r.dealValueUsd * r.probabilityPct) / 100))],
+                ["Weighted Value", formatCurrency(Math.round((r.dealValueIdr * r.probabilityPct) / 100))],
                 ["Description", r.description],
               ]}
             />
@@ -310,12 +310,12 @@ export default function PipelinePage() {
             </FieldLabel>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <FieldLabel label="Deal Value (USD)">
+            <FieldLabel label="Deal Value (IDR)">
               <input
                 type="number"
                 min={0}
-                value={form.dealValueUsd}
-                onChange={(e) => setForm({ ...form, dealValueUsd: Number(e.target.value) })}
+                value={form.dealValueIdr}
+                onChange={(e) => setForm({ ...form, dealValueIdr: Number(e.target.value) })}
                 className={inputClass}
               />
             </FieldLabel>

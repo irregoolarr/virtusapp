@@ -28,13 +28,23 @@ export function formatDateTime(dateInput: string | Date | null | undefined): str
   });
 }
 
+const idrFormat = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
+const idrCompact = new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 1 });
+const usdFormat = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+/** All amounts in the app are Rupiah, e.g. "Rp 27.050.000". */
 export function formatCurrency(amount: number): string {
-  const formatted = new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-  })
-    .format(amount)
-    .replaceAll(",", ".");
-  return `$ ${formatted}`;
+  return idrFormat.format(amount).replace(/\u00a0/g, " ");
+}
+
+/** Short Rupiah for charts, e.g. "Rp 41,2 jt" / "Rp 1,2 M". */
+export function formatCurrencyCompact(amount: number): string {
+  return `Rp ${idrCompact.format(amount)}`;
+}
+
+/** USD is informational only (dashboard exchange-rate note). */
+export function formatUsd(amount: number): string {
+  return usdFormat.format(amount);
 }
 
 export function getInitials(name: string): string {

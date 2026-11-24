@@ -36,7 +36,7 @@ export default function ProductsPage() {
     description: "",
     slaTargetHours: 4,
     pricingModel: "Monthly Managed",
-    unitPriceUsd: 1500,
+    unitPriceIdr: 0,
     status: "Active",
   });
 
@@ -81,7 +81,7 @@ export default function ProductsPage() {
       description: "",
       slaTargetHours: 4,
       pricingModel: "Monthly Managed",
-      unitPriceUsd: 1500,
+      unitPriceIdr: 0,
       status: "Active",
     });
     setModalOpen(true);
@@ -98,7 +98,7 @@ export default function ProductsPage() {
       description: p.description,
       slaTargetHours: p.slaTargetHours,
       pricingModel: p.pricingModel,
-      unitPriceUsd: p.unitPriceUsd,
+      unitPriceIdr: p.unitPriceIdr,
       status: p.status,
     });
     setModalOpen(true);
@@ -111,7 +111,7 @@ export default function ProductsPage() {
       const payload = {
         ...form,
         slaTargetHours: Number(form.slaTargetHours),
-        unitPriceUsd: Number(form.unitPriceUsd),
+        unitPriceIdr: Number(form.unitPriceIdr),
         partnerId: form.partnerId ? Number(form.partnerId) : null,
       };
       const res = await fetch(editing ? `/api/products/${editing.id}` : "/api/products", {
@@ -160,7 +160,7 @@ export default function ProductsPage() {
     { key: "partnerName", header: "Partner", width: 160 },
     { key: "slaTargetHours", header: "SLA Target", width: 100, align: "right", render: (r) => `${r.slaTargetHours}h` },
     { key: "pricingModel", header: "Pricing", width: 120 },
-    { key: "unitPriceUsd", header: "Unit Price", width: 110, align: "right", render: (r) => formatCurrency(r.unitPriceUsd) },
+    { key: "unitPriceIdr", header: "Unit Price", width: 110, align: "right", render: (r) => formatCurrency(r.unitPriceIdr) },
     { key: "activeDeployments", header: "Deployments", width: 110, align: "right" },
     { key: "status", header: "Status", width: 110, render: (r) => <Pill tone={r.status === "Active" ? "normal" : "low"}>{r.status}</Pill> },
   ];
@@ -198,7 +198,7 @@ export default function ProductsPage() {
                 ["Description", r.description],
                 ["Vendor", r.vendorName],
                 ["Partner", r.partnerName],
-                ["Pricing", `${formatCurrency(r.unitPriceUsd)} · ${r.pricingModel}`],
+                ["Pricing", `${formatCurrency(r.unitPriceIdr)} · ${r.pricingModel}`],
                 ["SLA Target", `${r.slaTargetHours} hours`],
                 ["Active Deployments", String(r.activeDeployments)],
               ]}
@@ -287,12 +287,12 @@ export default function ProductsPage() {
                 className={inputClass}
               />
             </FieldLabel>
-            <FieldLabel label="Unit Price (USD)">
+            <FieldLabel label="Unit Price (IDR)">
               <input
                 type="number"
                 min={0}
-                value={form.unitPriceUsd}
-                onChange={(e) => setForm({ ...form, unitPriceUsd: Number(e.target.value) })}
+                value={form.unitPriceIdr}
+                onChange={(e) => setForm({ ...form, unitPriceIdr: Number(e.target.value) })}
                 className={inputClass}
               />
             </FieldLabel>

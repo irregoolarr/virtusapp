@@ -148,3 +148,20 @@ export interface LookupsData {
   roles: Array<{ id: number; name: string; slug: string }>;
   badges: { corrective: number; preventive: number; pipeline: number; events: number };
 }
+
+export type ActivityItem = Wire<(typeof db.activities)["$inferSelect"]> & { actorName: string | null };
+
+export type AttachmentItem = Omit<
+  Wire<(typeof db.attachments)["$inferSelect"]>,
+  "content" | "driveFileId"
+> & { uploadedByName: string | null };
+
+export interface ExchangeRateInfo {
+  /** Rupiah per 1 USD (BI middle rate when official). */
+  rate: number;
+  buy: number | null;
+  sell: number | null;
+  date: string;
+  source: string;
+  official: boolean;
+}
