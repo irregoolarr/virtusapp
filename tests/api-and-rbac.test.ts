@@ -510,3 +510,120 @@ test("Corrective: resolution detail, activity history, attachments", async () =>
   const after = await api(`/api/activities?entityType=corrective&entityId=${id}`, {}, adminCookie);
   assert.equal((after.json as { items: unknown[] }).items.length, 0);
 });
+
+test("Corrective: categories, SLA default & breach alert, resolve → close → reopen, preview", async () => {
+  const adminCookie = await loginAs(ADMIN_EMAIL);
+  const post = (path: string, body: unknown) => api(path, { method: "POST", body: JSON.stringify(body) }, adminCookie);
+
+  // Invalid subcategory is refused
+  const badCat = await post("/api/maintenance/corrective", {
+    title: "Bad category",
+    description: "x",
+    category: "Network",
+    subcategory: "Account Lockout",
+  });
+  assert.equal(badCat.status, 400);
+
+  // Default SLA target comes from priority (Critical = 4h)
+  const before = Date.now();
+  const created = await post("/api/maintenance/corrective", {
+    title: "Lifecycle test",
+    description: "Automated lifecycle test",
+    severity: "Critical",
+    category: "Network",
+    subcategory: "Link Down",
+    source: "Phone",
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  const ticket = (created.json as { item: { id: number; dueDate: string; category: string; source: string } }).item;
+  const hours = (new Date(ticket.dueDate).getTime() - before) / 3_600_000;
+  assert.ok(hours > 3.9 && hours < 4.1, `Critical SLA should be ~4h, got ${hours}`);
+  assert.equal(ticket.category, "Network");
+  assert.equal(ticket.source, "Phone");
+  const id = ticket.id;
+
+  // A service number must belong to the ticket's customer
+  const custA = await post("/api/customers", { name: "SLA Cust A", industry: "Telecom", contactName: "Contact A", contactEmail: "a@cust.example" });
+  const custB = await post("/api/customers", { name: "SLA Cust B", industry: "Telecom", contactName: "Contact B", contactEmail: "b@cust.example" });
+  const custAId = (custA.json as { item: { id: number } }).item.id;
+  const custBId = (custB.json as { item: { id: number } }).item.id;
+  const srv = await post("/api/services", {
+    serviceNumber: `SRV-SLA-${Date.now()}`,
+    title: "Test link",
+    category: "Connectivity",
+    startDate: "2026-01-01",
+    endDate: "2027-01-01",
+    customerId: custAId,
+  });
+  const srvId = (srv.json as { item: { id: number } }).item.id;
+  const mismatch = await api(
+    `/api/maintenance/corrective/${id}`,
+    { method: "PATCH", body: JSON.stringify({ customerId: custBId, serviceNumberId: srvId }) },
+    adminCookie
+  );
+  assert.equal(mismatch.status, 400);
+  const match = await api(
+    `/api/maintenance/corrective/${id}`,
+    { method: "PATCH", body: JSON.stringify({ customerId: custAId, serviceNumberId: srvId }) },
+    adminCookie
+  );
+  assert.equal(match.status, 200);
+
+  // Past SLA target → breach alert is recorded once
+  const past = await api(
+    `/api/maintenance/corrective/${id}`,
+    { method: "PATCH", body: JSON.stringify({ dueDate: new Date(Date.now() - 60_000).toISOString() }) },
+    adminCookie
+  );
+  assert.equal(past.status, 200);
+  const run = await post("/api/events/process", {});
+  assert.equal(run.status, 200);
+  assert.ok((run.json as { sla: { breached: number } }).sla.breached >= 1);
+  const run2 = await post("/api/events/process", {});
+  assert.equal((run2.json as { sla: { breached: number } }).sla.breached, 0, "breach alert must not repeat");
+
+  // Close is only allowed after resolve
+  const earlyClose = await post(`/api/maintenance/corrective/${id}/close`, {});
+  assert.equal(earlyClose.status, 400);
+
+  const resolved = await post(`/api/maintenance/corrective/${id}/resolve`, { resolutionDetail: "Replaced the SFP module", notifyCustomer: true });
+  assert.equal(resolved.status, 200, JSON.stringify(resolved.json));
+  const closed = await post(`/api/maintenance/corrective/${id}/close`, { note: "Customer confirmed" });
+  assert.equal(closed.status, 200);
+  assert.equal((closed.json as { item: { status: string } }).item.status, "Closed");
+
+  const noReason = await post(`/api/maintenance/corrective/${id}/reopen`, { reason: "" });
+  assert.equal(noReason.status, 400);
+  const reopened = await post(`/api/maintenance/corrective/${id}/reopen`, { reason: "Link dropped again" });
+  assert.equal(reopened.status, 200);
+  const item = (reopened.json as { item: { status: string; reopenCount: number; closedAt: string | null } }).item;
+  assert.equal(item.status, "Diagnosing");
+  assert.equal(item.reopenCount, 1);
+  assert.equal(item.closedAt, null);
+
+  const history = await api(`/api/activities?entityType=corrective&entityId=${id}`, {}, adminCookie);
+  const cats = (history.json as { items: Array<{ category: string; subject: string }> }).items;
+  for (const expected of ["SLA Breach", "Resolution", "Closed", "Reopened"]) {
+    assert.ok(cats.some((a) => a.category === expected), `missing activity ${expected}`);
+  }
+  assert.ok(cats.some((a) => a.subject.startsWith("Your incident")), "customer resolution email should be logged");
+
+  // Preview: text is served inline, other types always download
+  const cfg = await api("/api/attachments/config", {}, adminCookie);
+  assert.equal(cfg.status, 200);
+  const form = new FormData();
+  form.set("entityType", "corrective");
+  form.set("entityId", String(id));
+  form.set("file", new Blob(["preview me"], { type: "text/plain" }), "notes.txt");
+  const up = await fetch(`${BASE_URL}/api/attachments`, { method: "POST", body: form, headers: { cookie: adminCookie } });
+  const attId = ((await up.json()) as { item: { id: number } }).item.id;
+  const inline = await api(`/api/attachments/${attId}?inline=1`, {}, adminCookie);
+  assert.match(inline.res.headers.get("content-disposition") ?? "", /^inline/);
+  const download = await api(`/api/attachments/${attId}`, {}, adminCookie);
+  assert.match(download.res.headers.get("content-disposition") ?? "", /^attachment/);
+
+  // Cleanup
+  assert.equal((await api(`/api/maintenance/corrective/${id}`, { method: "DELETE" }, adminCookie)).status, 200);
+  assert.equal((await api(`/api/services/${srvId}`, { method: "DELETE" }, adminCookie)).status, 200);
+  for (const c of [custAId, custBId]) assert.equal((await api(`/api/customers/${c}`, { method: "DELETE" }, adminCookie)).status, 200);
+});

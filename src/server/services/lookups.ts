@@ -48,7 +48,7 @@ export async function getLookups(): Promise<LookupsData> {
         .where(eq(users.isActive, true))
         .orderBy(asc(users.name)),
       db.select({ id: roles.id, name: roles.name, slug: roles.slug }).from(roles).orderBy(asc(roles.id)),
-      db.select({ count }).from(correctiveMaintenances).where(sql`${correctiveMaintenances.status} != 'Resolved'`),
+      db.select({ count }).from(correctiveMaintenances).where(sql`${correctiveMaintenances.status} NOT IN ('Resolved', 'Closed')`),
       db.select({ count }).from(preventiveMaintenances).where(sql`${preventiveMaintenances.status} != 'Completed'`),
       db.select({ count }).from(pipelineDeals).where(sql`${pipelineDeals.stage} != 'Deal Closed'`),
       db.select({ count }).from(events).where(eq(events.status, "Scheduled")),

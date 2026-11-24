@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CheckCheck, RotateCcw, ShieldCheck } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { DataGrid, GridPage, GridSelect, type GridColumn } from "@/components/grid/DataGrid";
 import { DetailList } from "@/components/grid/DetailPane";
@@ -12,53 +13,101 @@ import { AttachmentsPanel, uploadAttachments } from "@/components/records/Attach
 import { FieldLabel, FormActions, inputClass } from "@/components/FormFields";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ToastProvider";
-import { formatShortDate } from "@/lib/utils";
-import { CORRECTIVE_STAGES, SEVERITIES } from "@/shared/constants";
+import { formatDateTime, formatShortDate } from "@/lib/utils";
+import {
+  CM_CATEGORIES,
+  CM_CATEGORY_NAMES,
+  CM_SOURCES,
+  CORRECTIVE_STAGES,
+  SEVERITIES,
+  SLA_HOURS_BY_SEVERITY,
+  isCorrectiveDone,
+} from "@/shared/constants";
+import { defaultSlaDue, slaInfo, type SlaState } from "@/shared/sla";
 import type { CorrectiveItem } from "@/shared/types";
 
-const STAGES = CORRECTIVE_STAGES;
-
 type CorrectiveRow = CorrectiveItem;
+
+/** Stages that can be chosen in the form; Resolved / Closed go through the actions. */
+const WORK_STAGES = CORRECTIVE_STAGES.filter((s) => !isCorrectiveDone(s));
+
+const VIEWS = [
+  { value: "open", label: "Open tickets" },
+  { value: "breached", label: "SLA breached" },
+  { value: "Resolved", label: "Resolved" },
+  { value: "Closed", label: "Closed" },
+  { value: "all", label: "All tickets" },
+];
+
+const SLA_TONE: Record<SlaState, "critical" | "high" | "normal" | "low" | "done"> = {
+  breached: "critical",
+  missed: "critical",
+  "at-risk": "high",
+  "on-track": "normal",
+  met: "done",
+  none: "low",
+};
+
+/** ISO → value for <input type="datetime-local"> in the browser's time zone. */
+function toLocalInput(value: string | Date | null | undefined): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const emptyForm = {
+  title: "",
+  description: "",
+  severity: "High",
+  status: "Reported",
+  category: "Other",
+  subcategory: "General",
+  source: "Portal",
+  rootCause: "",
+  resolutionDetail: "",
+  dueDate: "",
+  customerId: "",
+  partnerId: "",
+  serviceNumberId: "",
+  productId: "",
+  assigneeId: "",
+};
 
 export default function CorrectivePage() {
   const { user, lookups, can, refreshLookups } = useAuth();
   const { notify } = useToast();
+  const canWrite = can("maintenance:write");
+
   const [items, setItems] = useState<CorrectiveRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sevFilter, setSevFilter] = useState("ALL");
-  const [loading, setLoading] = useState(true);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [resolving, setResolving] = useState<CorrectiveRow | null>(null);
-  const [resolutionText, setResolutionText] = useState("");
-  const [resolveSaving, setResolveSaving] = useState(false);
+  const [view, setView] = useState("open");
+  const [now, setNow] = useState(() => Date.now());
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<CorrectiveRow | null>(null);
   const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [dueTouched, setDueTouched] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
-  const [form, setForm] = useState({
-    title: "",
-    description: "",
-    severity: "High",
-    status: "Reported",
-    rootCause: "",
-    resolutionDetail: "",
-    dueDate: "",
-    customerId: "",
-    partnerId: "",
-    serviceNumberId: "",
-    productId: "",
-    assigneeId: "",
-  });
+  // Lifecycle dialogs
+  const [resolving, setResolving] = useState<CorrectiveRow | null>(null);
+  const [resolution, setResolution] = useState({ detail: "", notifyCustomer: false });
+  const [closing, setClosing] = useState<CorrectiveRow | null>(null);
+  const [closeNote, setCloseNote] = useState("");
+  const [reopening, setReopening] = useState<CorrectiveRow | null>(null);
+  const [reopenReason, setReopenReason] = useState("");
+  const [actionSaving, setActionSaving] = useState(false);
 
   const loadItems = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/maintenance/corrective", { cache: "no-store" });
-      if (res.ok) {
-        const data = await res.json();
-        setItems(data.items ?? []);
-      }
+      if (res.ok) setItems((await res.json()).items ?? []);
     } finally {
       setLoading(false);
     }
@@ -68,45 +117,65 @@ export default function CorrectivePage() {
     if (user) void loadItems();
   }, [user, loadItems]);
 
+  // SLA countdowns tick once a minute.
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
   const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
     return items
       .filter((i) => {
         if (sevFilter !== "ALL" && i.severity !== sevFilter) return false;
-        const q = search.toLowerCase().trim();
+        if (view === "open" && isCorrectiveDone(i.status)) return false;
+        if (view === "breached" && slaInfo(i, now).state !== "breached") return false;
+        if ((view === "Resolved" || view === "Closed") && i.status !== view) return false;
         if (!q) return true;
-        return `${i.ticketCode} ${i.title} ${i.description} ${i.customerName ?? ""} ${i.serviceCode ?? ""}`
+        return `${i.ticketCode} ${i.title} ${i.description} ${i.customerName ?? ""} ${i.serviceCode ?? ""} ${i.category} ${i.subcategory}`
           .toLowerCase()
           .includes(q);
       })
       .sort((a, b) => b.id - a.id);
-  }, [items, sevFilter, search]);
+  }, [items, sevFilter, view, search, now]);
 
-  const openCount = items.filter((i) => i.status !== "Resolved").length;
-  const resolvedCount = items.filter((i) => i.status === "Resolved").length;
-  const criticalCount = items.filter((i) => i.severity === "Critical" && i.status !== "Resolved").length;
-  const slaRate = items.length > 0 ? Math.round(((items.length - criticalCount) / items.length) * 100) : 100;
+  // ---- Form helpers --------------------------------------------------------------
+
+  const servicesForCustomer = useMemo(() => {
+    const all = lookups?.services ?? [];
+    return form.customerId ? all.filter((s) => String(s.customerId) === form.customerId) : all;
+  }, [lookups, form.customerId]);
+
+  const setCustomer = (customerId: string) => {
+    const keepService = (lookups?.services ?? []).some(
+      (s) => String(s.id) === form.serviceNumberId && String(s.customerId) === customerId
+    );
+    setForm({ ...form, customerId, serviceNumberId: keepService ? form.serviceNumberId : "" });
+  };
+
+  const setService = (serviceNumberId: string) => {
+    const srv = (lookups?.services ?? []).find((s) => String(s.id) === serviceNumberId);
+    // Picking a service fills in its customer.
+    setForm({ ...form, serviceNumberId, customerId: srv ? String(srv.customerId) : form.customerId });
+  };
+
+  const setSeverity = (severity: string) => {
+    // New tickets follow the priority's default SLA until the date is edited by hand.
+    const dueDate = !editing && !dueTouched ? toLocalInput(defaultSlaDue(severity)) : form.dueDate;
+    setForm({ ...form, severity, dueDate });
+  };
+
+  const setCategory = (category: string) => setForm({ ...form, category, subcategory: CM_CATEGORIES[category]?.[0] ?? "General" });
 
   const openCreate = () => {
     setEditing(null);
     setPendingFiles([]);
-    setForm({
-      title: "",
-      description: "",
-      severity: "High",
-      status: "Reported",
-      rootCause: "",
-      resolutionDetail: "",
-      dueDate: new Date(Date.now() + 2 * 86400_000).toISOString().slice(0, 10),
-      customerId: lookups?.customers[0]?.id ? String(lookups.customers[0].id) : "",
-      partnerId: "",
-      serviceNumberId: lookups?.services[0]?.id ? String(lookups.services[0].id) : "",
-      productId: lookups?.products[0]?.id ? String(lookups.products[0].id) : "",
-      assigneeId: user ? String(user.id) : "",
-    });
+    setDueTouched(false);
+    setForm({ ...emptyForm, dueDate: toLocalInput(defaultSlaDue(emptyForm.severity)), assigneeId: user ? String(user.id) : "" });
     setModalOpen(true);
   };
 
-  // Support deep link from dashboard CTA: /corrective?new=1 opens the create form once.
+  // Deep link from the dashboard: /corrective?new=1 opens the create form once.
   const autoOpenedRef = useRef(false);
   useEffect(() => {
     if (autoOpenedRef.current || !lookups) return;
@@ -117,125 +186,133 @@ export default function CorrectivePage() {
     }
   });
 
-  const openEditById = (id: number) => {
-    const found = items.find((i) => i.id === id);
-    if (!found) return;
-    setEditing(found);
+  const openEdit = (row: CorrectiveRow) => {
+    setEditing(row);
+    setDueTouched(true);
     setForm({
-      title: found.title,
-      description: found.description,
-      severity: found.severity,
-      status: found.status,
-      rootCause: found.rootCause ?? "",
-      resolutionDetail: found.resolutionDetail ?? "",
-      dueDate: found.dueDate ? new Date(found.dueDate).toISOString().slice(0, 10) : "",
-      customerId: found.customerId ? String(found.customerId) : "",
-      partnerId: found.partnerId ? String(found.partnerId) : "",
-      serviceNumberId: found.serviceNumberId ? String(found.serviceNumberId) : "",
-      productId: found.productId ? String(found.productId) : "",
-      assigneeId: found.assigneeId ? String(found.assigneeId) : "",
+      title: row.title,
+      description: row.description,
+      severity: row.severity,
+      status: row.status,
+      category: row.category,
+      subcategory: row.subcategory,
+      source: row.source,
+      rootCause: row.rootCause ?? "",
+      resolutionDetail: row.resolutionDetail ?? "",
+      dueDate: toLocalInput(row.dueDate),
+      customerId: row.customerId ? String(row.customerId) : "",
+      partnerId: row.partnerId ? String(row.partnerId) : "",
+      serviceNumberId: row.serviceNumberId ? String(row.serviceNumberId) : "",
+      productId: row.productId ? String(row.productId) : "",
+      assigneeId: row.assigneeId ? String(row.assigneeId) : "",
     });
     setModalOpen(true);
   };
+
+  const refreshAll = () => Promise.all([loadItems(), refreshLookups()]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
+      const done = Boolean(editing && isCorrectiveDone(editing.status));
       const payload = {
         title: form.title,
         description: form.description,
         severity: form.severity,
-        status: form.status,
+        // Lifecycle (resolve/close/reopen) goes through the actions, not the form.
+        ...(!done && { status: form.status }),
+        category: form.category,
+        subcategory: form.subcategory,
+        source: form.source,
         rootCause: form.rootCause || null,
-        resolutionDetail: form.resolutionDetail || null,
-        dueDate: form.dueDate || null,
+        ...(done && { resolutionDetail: form.resolutionDetail || null }),
+        dueDate: form.dueDate ? new Date(form.dueDate).toISOString() : null,
         customerId: form.customerId ? Number(form.customerId) : null,
         partnerId: form.partnerId ? Number(form.partnerId) : null,
         serviceNumberId: form.serviceNumberId ? Number(form.serviceNumberId) : null,
         productId: form.productId ? Number(form.productId) : null,
         assigneeId: form.assigneeId ? Number(form.assigneeId) : null,
       };
-      const res = await fetch(
-        editing ? `/api/maintenance/corrective/${editing.id}` : "/api/maintenance/corrective",
-        {
-          method: editing ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
+      const res = await fetch(editing ? `/api/maintenance/corrective/${editing.id}` : "/api/maintenance/corrective", {
+        method: editing ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       if (!res.ok) {
-        const err = await res.json();
-        notify(err.error || "Failed to save ticket", "error");
+        notify((await res.json().catch(() => ({}))).error || "Failed to save ticket", "error");
         return;
       }
       if (!editing && pendingFiles.length > 0) {
         const { item } = await res.json();
         const failed = await uploadAttachments("corrective", item.id, pendingFiles);
-        if (failed.length) notify(`Ticket created, but these files failed to upload: ${failed.join(", ")}`, "error");
+        if (failed.length) notify(`Ticket created, but these files failed: ${failed.join(", ")}`, "error");
       }
       notify(editing ? "Corrective ticket updated" : "Corrective ticket created");
       setPendingFiles([]);
       setModalOpen(false);
-      await Promise.all([loadItems(), refreshLookups()]);
+      await refreshAll();
     } finally {
       setSaving(false);
     }
   };
 
-  const openResolve = (row: CorrectiveRow | null) => {
-    if (!row || row.status === "Resolved") return;
-    setResolutionText(row.resolutionDetail ?? "");
-    setResolving(row);
-  };
-
-  const submitResolve = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!resolving || !resolutionText.trim()) return;
-    setResolveSaving(true);
-    try {
-      const res = await fetch(`/api/maintenance/corrective/${resolving.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "Resolved", resolutionDetail: resolutionText.trim() }),
-      });
-      if (!res.ok) {
-        notify((await res.json().catch(() => ({}))).error || "Could not resolve ticket", "error");
-        return;
-      }
-      notify(`${resolving.ticketCode} resolved`);
-      setResolving(null);
-      await Promise.all([loadItems(), refreshLookups()]);
-    } finally {
-      setResolveSaving(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!editing) return;
-    const res = await fetch(`/api/maintenance/corrective/${editing.id}`, { method: "DELETE" });
-    if (res.ok) {
-      notify("Corrective ticket deleted");
-      setModalOpen(false);
-      await Promise.all([loadItems(), refreshLookups()]);
-    } else {
-      notify("Missing permission to delete", "error");
-    }
-  };
-
-  const deleteRow = async (row: CorrectiveRow | null) => {
-    if (!row || !window.confirm(`Delete ${row.ticketCode}?`)) return;
+  const deleteTicket = async (row: CorrectiveRow | null) => {
+    if (!row || !window.confirm(`Delete ${row.ticketCode}? Its history and attachments are deleted too.`)) return;
     const res = await fetch(`/api/maintenance/corrective/${row.id}`, { method: "DELETE" });
     if (res.ok) {
       notify("Corrective ticket deleted");
-      await Promise.all([loadItems(), refreshLookups()]);
+      setModalOpen(false);
+      await refreshAll();
     } else {
       notify("Missing permission to delete", "error");
     }
   };
 
+  // ---- Lifecycle actions -----------------------------------------------------------
+
+  const runAction = async (row: CorrectiveRow, action: "resolve" | "close" | "reopen", body: unknown, done: string) => {
+    setActionSaving(true);
+    try {
+      const res = await fetch(`/api/maintenance/corrective/${row.id}/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        notify(data.error || `Could not ${action} ticket`, "error");
+        return false;
+      }
+      notify(`${row.ticketCode} ${done}`);
+      setModalOpen(false);
+      await refreshAll();
+      return true;
+    } finally {
+      setActionSaving(false);
+    }
+  };
+
+  const openResolve = (row: CorrectiveRow | null) => {
+    if (!row) return;
+    setResolution({ detail: row.resolutionDetail ?? "", notifyCustomer: Boolean(row.customerEmail) });
+    setResolving(row);
+  };
+  const openClose = (row: CorrectiveRow | null) => {
+    if (!row) return;
+    setCloseNote("");
+    setClosing(row);
+  };
+  const openReopen = (row: CorrectiveRow | null) => {
+    if (!row) return;
+    setReopenReason("");
+    setReopening(row);
+  };
+
+  // ---- Grid ----------------------------------------------------------------------
+
   const columns: GridColumn<CorrectiveRow>[] = [
-    { key: "ticketCode", header: "Incident", width: 120, render: (r) => <Mono>{r.ticketCode}</Mono> },
+    { key: "ticketCode", header: "Incident", width: 125, render: (r) => <Mono>{r.ticketCode}</Mono> },
     {
       key: "severity",
       header: "Priority",
@@ -243,21 +320,38 @@ export default function CorrectivePage() {
       value: (r) => SEVERITIES.indexOf(r.severity as (typeof SEVERITIES)[number]),
       render: (r) => <Pill tone={severityTone(r.severity)}>{r.severity}</Pill>,
     },
-    { key: "customerName", header: "Customer", width: 170 },
-    { key: "title", header: "Summary", width: 280, wrap: true },
-    { key: "status", header: "Status", width: 110 },
+    { key: "category", header: "Category", width: 190, value: (r) => `${r.category} / ${r.subcategory}` },
+    { key: "customerName", header: "Customer", width: 160 },
+    { key: "title", header: "Summary", width: 260, wrap: true },
+    { key: "status", header: "Status", width: 105 },
     {
       key: "progress",
       header: "Progress",
       width: 100,
-      value: (r) => STAGES.indexOf(r.status as (typeof STAGES)[number]),
-      render: (r) => <SegmentProgress ratio={stageRatio(STAGES, r.status)} />,
+      value: (r) => CORRECTIVE_STAGES.indexOf(r.status as (typeof CORRECTIVE_STAGES)[number]),
+      render: (r) => <SegmentProgress ratio={stageRatio(CORRECTIVE_STAGES, r.status)} />,
     },
-    { key: "serviceCode", header: "Service", width: 130 },
-    { key: "assigneeName", header: "Owner", width: 150, value: (r) => r.assigneeName ?? "Unassigned" },
-    { key: "dueDate", header: "SLA Due", width: 110, value: (r) => r.dueDate ?? "", render: (r) => formatShortDate(r.dueDate) },
+    {
+      key: "sla",
+      header: "SLA",
+      width: 185,
+      // Sort by minutes left (breached first); finished tickets last.
+      value: (r) => slaInfo(r, now).minutesLeft ?? Number.MAX_SAFE_INTEGER,
+      render: (r) => {
+        const sla = slaInfo(r, now);
+        return (
+          <Pill tone={SLA_TONE[sla.state]} className="min-w-0">
+            <span title={r.dueDate ? `Target ${formatDateTime(r.dueDate)}` : undefined}>{sla.label}</span>
+          </Pill>
+        );
+      },
+    },
+    { key: "source", header: "Source", width: 110 },
+    { key: "assigneeName", header: "Owner", width: 140, value: (r) => r.assigneeName ?? "Unassigned" },
     { key: "createdAt", header: "Created On", width: 120, render: (r) => formatShortDate(r.createdAt) },
   ];
+
+  const editingDone = Boolean(editing && isCorrectiveDone(editing.status));
 
   return (
     <AppShell>
@@ -270,45 +364,55 @@ export default function CorrectivePage() {
           exportName="corrective-maintenance"
           search={search}
           onSearchChange={setSearch}
-          searchPlaceholder="Search incident, customer, service..."
+          searchPlaceholder="Search incident, customer, category..."
           onRefresh={() => void loadItems()}
           loading={loading}
-          emptyMessage={search || sevFilter !== "ALL" ? "No tickets match your filters" : "No corrective tickets yet — click New to log the first one"}
-          onOpen={(r) => openEditById(r.id)}
-          rowTone={(r) => (r.severity === "Critical" && r.status !== "Resolved" ? "critical" : undefined)}
+          emptyMessage={
+            items.length === 0 ? "No corrective tickets yet — click New to log the first one" : "No tickets in this view"
+          }
+          onOpen={openEdit}
+          rowTone={(r) =>
+            (r.severity === "Critical" && !isCorrectiveDone(r.status)) || slaInfo(r, now).state === "breached" ? "critical" : undefined
+          }
           actions={[
-            { label: "New", onClick: openCreate, hidden: !can("maintenance:write") },
-            { label: "Open", needsSelection: true, onClick: (r) => r && openEditById(r.id) },
-            {
-              label: "Resolve",
-              needsSelection: true,
-              hidden: !can("maintenance:write"),
-              onClick: (r) => openResolve(r),
-            },
-            { label: "Delete", needsSelection: true, tone: "danger", hidden: !can("maintenance:delete"), onClick: (r) => void deleteRow(r) },
+            { label: "New", onClick: openCreate, hidden: !canWrite },
+            { label: "Open", needsSelection: true, onClick: (r) => r && openEdit(r) },
+            { label: "Resolve", hidden: !canWrite, enabledFor: (r) => !isCorrectiveDone(r.status), onClick: openResolve },
+            { label: "Close", hidden: !canWrite, enabledFor: (r) => r.status === "Resolved", onClick: openClose },
+            { label: "Reopen", hidden: !canWrite, enabledFor: (r) => isCorrectiveDone(r.status), onClick: openReopen },
+            { label: "Delete", needsSelection: true, tone: "danger", hidden: !can("maintenance:delete"), onClick: (r) => void deleteTicket(r) },
           ]}
           filters={
-            <GridSelect
-              label="Severity"
-              value={sevFilter}
-              onChange={setSevFilter}
-              options={[{ value: "ALL", label: "All severities" }, ...SEVERITIES.map((s) => ({ value: s, label: s }))]}
-            />
+            <>
+              <GridSelect label="View" value={view} onChange={setView} options={VIEWS} />
+              <GridSelect
+                label="Severity"
+                value={sevFilter}
+                onChange={setSevFilter}
+                options={[{ value: "ALL", label: "All priorities" }, ...SEVERITIES.map((s) => ({ value: s, label: s }))]}
+              />
+            </>
           }
-          detail={(r) => (
-            <DetailList
-              items={[
-                ["Customer", r.customerName],
-                ["Customer Email", r.customerEmail],
-                ["Customer Address", r.customerAddress],
-                ["Service Number", r.serviceCode],
-                ["Description", r.description],
-                ["Assigned Engineer", r.assigneeName ? `${r.assigneeName}${r.assigneeJobTitle ? ` · ${r.assigneeJobTitle}` : ""}` : "Unassigned"],
-                ["Root Cause", r.rootCause],
-                ["Resolution", r.resolutionDetail],
-              ]}
-            />
-          )}
+          detail={(r) => {
+            const sla = slaInfo(r, now);
+            return (
+              <DetailList
+                items={[
+                  ["Customer", r.customerName],
+                  ["Customer Email", r.customerEmail],
+                  ["Category", `${r.category} / ${r.subcategory}`],
+                  ["Source", r.source],
+                  ["SLA Target", r.dueDate ? `${formatDateTime(r.dueDate)} · ${sla.label}` : "No SLA"],
+                  ["Service Number", r.serviceCode],
+                  ["Assigned Engineer", r.assigneeName ? `${r.assigneeName}${r.assigneeJobTitle ? ` · ${r.assigneeJobTitle}` : ""}` : "Unassigned"],
+                  ["Description", r.description],
+                  ["Root Cause", r.rootCause],
+                  ["Resolution", r.resolutionDetail],
+                  ["Reopened", r.reopenCount ? `${r.reopenCount} time(s)` : "—"],
+                ]}
+              />
+            );
+          }}
         />
       </GridPage>
 
@@ -316,113 +420,161 @@ export default function CorrectivePage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editing ? editing.title : "Log Corrective Maintenance"}
-        subtitle={editing?.ticketCode}
+        subtitle={editing ? `${editing.ticketCode} · ${editing.status}` : undefined}
         entityType="corrective"
         entityId={editing?.id}
         canDelete={Boolean(editing && can("maintenance:delete"))}
-        onDelete={handleDelete}
+        onDelete={() => deleteTicket(editing)}
         size="wide"
         showComments={false}
       >
+        {editing && canWrite && (
+          <div className="flex flex-wrap gap-2" data-ignore-dirty>
+            {!editingDone && (
+              <TextButton tone="primary" onClick={() => openResolve(editing)}>
+                <span className="inline-flex items-center gap-1.5">
+                  <CheckCheck className="w-4 h-4" /> Resolve
+                </span>
+              </TextButton>
+            )}
+            {editing.status === "Resolved" && (
+              <TextButton onClick={() => openClose(editing)}>
+                <span className="inline-flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4" /> Close
+                </span>
+              </TextButton>
+            )}
+            {editingDone && (
+              <TextButton onClick={() => openReopen(editing)}>
+                <span className="inline-flex items-center gap-1.5">
+                  <RotateCcw className="w-4 h-4" /> Reopen
+                </span>
+              </TextButton>
+            )}
+          </div>
+        )}
+
         <form onSubmit={handleSave} data-record-form className="space-y-4">
           <FieldLabel label="Incident Title" required>
-            <input
-              type="text"
-              required
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className={inputClass}
-            />
+            <input type="text" required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className={inputClass} />
           </FieldLabel>
           <FieldLabel label="Symptom & Description" required>
-            <textarea
-              rows={3}
-              required
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              className={inputClass}
-            />
+            <textarea rows={3} required value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className={inputClass} />
           </FieldLabel>
-          <div className="grid grid-cols-3 gap-3">
-            <FieldLabel label="Severity">
-              <select
-                value={form.severity}
-                onChange={(e) => setForm({ ...form, severity: e.target.value })}
-                className={inputClass}
-              >
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <FieldLabel label="Category" required>
+              <select value={form.category} onChange={(e) => setCategory(e.target.value)} className={inputClass}>
+                {CM_CATEGORY_NAMES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </FieldLabel>
+            <FieldLabel label="Subcategory" required>
+              <select value={form.subcategory} onChange={(e) => setForm({ ...form, subcategory: e.target.value })} className={inputClass}>
+                {(CM_CATEGORIES[form.category] ?? ["General"]).map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </FieldLabel>
+            <FieldLabel label="Source" required>
+              <select value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} className={inputClass}>
+                {CM_SOURCES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </FieldLabel>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <FieldLabel label="Priority">
+              <select value={form.severity} onChange={(e) => setSeverity(e.target.value)} className={inputClass}>
                 {SEVERITIES.map((s) => (
-                  <option key={s} value={s}>{s}</option>
+                  <option key={s} value={s}>
+                    {s} ({SLA_HOURS_BY_SEVERITY[s]}h SLA)
+                  </option>
                 ))}
               </select>
             </FieldLabel>
             <FieldLabel label="Status">
-              <select
-                value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value })}
-                className={inputClass}
-              >
-                {STAGES.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
+              {editingDone ? (
+                <input value={form.status} disabled className={`${inputClass} bg-[#F6F7F8]`} />
+              ) : (
+                <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className={inputClass}>
+                  {WORK_STAGES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              )}
             </FieldLabel>
-            <FieldLabel label="SLA Target Date">
+            <FieldLabel label="SLA Target">
               <input
-                type="date"
+                type="datetime-local"
                 value={form.dueDate}
-                onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+                onChange={(e) => {
+                  setDueTouched(true);
+                  setForm({ ...form, dueDate: e.target.value });
+                }}
                 className={inputClass}
               />
             </FieldLabel>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          {!editing && (
+            <p className="-mt-2 text-[12px] text-[#6B7280]">
+              SLA target follows the priority (Critical 4h · High 8h · Medium 24h · Low 72h) unless you change it.
+            </p>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FieldLabel label="Customer">
-              <select
-                value={form.customerId}
-                onChange={(e) => setForm({ ...form, customerId: e.target.value })}
-                className={inputClass}
-              >
+              <select value={form.customerId} onChange={(e) => setCustomer(e.target.value)} className={inputClass}>
                 <option value="">— Select customer —</option>
                 {(lookups?.customers ?? []).map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
                 ))}
               </select>
             </FieldLabel>
             <FieldLabel label="Service Number">
-              <select
-                value={form.serviceNumberId}
-                onChange={(e) => setForm({ ...form, serviceNumberId: e.target.value })}
-                className={inputClass}
-              >
-                <option value="">— Select service ID —</option>
-                {(lookups?.services ?? []).map((s) => (
-                  <option key={s.id} value={s.id}>{s.serviceNumber} · {s.title}</option>
+              <select value={form.serviceNumberId} onChange={(e) => setService(e.target.value)} className={inputClass}>
+                <option value="">
+                  {form.customerId && servicesForCustomer.length === 0 ? "— This customer has no services —" : "— Select service ID —"}
+                </option>
+                {servicesForCustomer.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.serviceNumber} · {s.title}
+                  </option>
                 ))}
               </select>
             </FieldLabel>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FieldLabel label="Escalation Partner">
-              <select
-                value={form.partnerId}
-                onChange={(e) => setForm({ ...form, partnerId: e.target.value })}
-                className={inputClass}
-              >
+              <select value={form.partnerId} onChange={(e) => setForm({ ...form, partnerId: e.target.value })} className={inputClass}>
                 <option value="">— None —</option>
                 {(lookups?.partners ?? []).map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
                 ))}
               </select>
             </FieldLabel>
             <FieldLabel label="Assigned Engineer">
-              <select
-                value={form.assigneeId}
-                onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
-                className={inputClass}
-              >
+              <select value={form.assigneeId} onChange={(e) => setForm({ ...form, assigneeId: e.target.value })} className={inputClass}>
                 <option value="">— Unassigned —</option>
                 {(lookups?.users ?? []).map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
                 ))}
               </select>
             </FieldLabel>
@@ -436,49 +588,132 @@ export default function CorrectivePage() {
               placeholder="Hardware fault, ISP degradation, config drift..."
             />
           </FieldLabel>
-          <FieldLabel label="Resolution Detail" required={form.status === "Resolved"}>
-            <textarea
-              rows={2}
-              required={form.status === "Resolved"}
-              placeholder={form.status === "Resolved" ? "Required to resolve: what was done to fix it?" : "Filled in when the ticket is resolved"}
-              value={form.resolutionDetail}
-              onChange={(e) => setForm({ ...form, resolutionDetail: e.target.value })}
-              className={inputClass}
-            />
-          </FieldLabel>
+          {editingDone && (
+            <FieldLabel label="Resolution Detail" required>
+              <textarea
+                rows={3}
+                required
+                value={form.resolutionDetail}
+                onChange={(e) => setForm({ ...form, resolutionDetail: e.target.value })}
+                className={inputClass}
+              />
+            </FieldLabel>
+          )}
           <AttachmentsPanel
             entityType="corrective"
             entityId={editing?.id ?? null}
-            canEdit={can("maintenance:write")}
+            canEdit={canWrite}
             pending={pendingFiles}
             onPendingChange={setPendingFiles}
           />
-          {can("maintenance:write") && (
-            <FormActions onCancel={() => setModalOpen(false)} saving={saving} />
-          )}
+          {canWrite && <FormActions onCancel={() => setModalOpen(false)} saving={saving} />}
         </form>
-        {editing && <ActivityHistory entityType="corrective" entityId={editing.id} canEdit={can("maintenance:write")} />}
+        {editing && <ActivityHistory entityType="corrective" entityId={editing.id} canEdit={canWrite} />}
       </RecordModal>
 
+      {/* Resolve: resolution detail (required) + optional customer email */}
       <Dialog open={Boolean(resolving)} title={resolving ? `Resolve ${resolving.ticketCode}` : "Resolve"} onClose={() => setResolving(null)}>
-        <form onSubmit={submitResolve} className="space-y-3">
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (resolving && (await runAction(resolving, "resolve", { resolutionDetail: resolution.detail, notifyCustomer: resolution.notifyCustomer }, "resolved")))
+              setResolving(null);
+          }}
+          className="space-y-3"
+        >
           {resolving && <p className="text-[13px] text-[#4B5563]">{resolving.title}</p>}
           <FieldLabel label="Resolution Detail" required>
             <textarea
               rows={5}
               required
+              minLength={5}
               maxLength={5000}
-              value={resolutionText}
-              onChange={(e) => setResolutionText(e.target.value)}
+              value={resolution.detail}
+              onChange={(e) => setResolution({ ...resolution, detail: e.target.value })}
               placeholder="What was the fix? e.g. Replaced faulty SFP on core switch port Gi1/0/24, verified link stable for 30 minutes."
               className={inputClass}
             />
           </FieldLabel>
-          <p className="text-[12px] text-[#6B7280]">The assigned engineer is emailed and the resolution is recorded in Activity History.</p>
+          <label className={`flex items-start gap-2 text-[13px] ${resolving?.customerEmail ? "text-[#2B3036]" : "text-[#8A94A0]"}`}>
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              disabled={!resolving?.customerEmail}
+              checked={resolution.notifyCustomer && Boolean(resolving?.customerEmail)}
+              onChange={(e) => setResolution({ ...resolution, notifyCustomer: e.target.checked })}
+            />
+            <span>
+              Email the customer the resolution
+              {resolving?.customerEmail ? ` (${resolving.customerEmail})` : " — no customer contact email on this ticket"}
+            </span>
+          </label>
+          <p className="text-[12px] text-[#6B7280]">The assigned engineer is notified and everything is recorded in Activity History.</p>
           <div className="flex justify-end gap-1">
             <TextButton onClick={() => setResolving(null)}>Cancel</TextButton>
-            <TextButton type="submit" tone="primary" disabled={resolveSaving || !resolutionText.trim()}>
-              {resolveSaving ? "Resolving..." : "Resolve"}
+            <TextButton type="submit" tone="primary" disabled={actionSaving || resolution.detail.trim().length < 5}>
+              {actionSaving ? "Resolving..." : "Resolve"}
+            </TextButton>
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Close: after the customer confirms */}
+      <Dialog open={Boolean(closing)} title={closing ? `Close ${closing.ticketCode}` : "Close"} onClose={() => setClosing(null)}>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (closing && (await runAction(closing, "close", { note: closeNote }, "closed"))) setClosing(null);
+          }}
+          className="space-y-3"
+        >
+          <p className="text-[13px] text-[#4B5563]">Close the ticket once the customer has confirmed the fix. It can still be reopened later.</p>
+          <FieldLabel label="Note (optional)">
+            <textarea
+              rows={3}
+              maxLength={2000}
+              value={closeNote}
+              onChange={(e) => setCloseNote(e.target.value)}
+              placeholder="e.g. Customer confirmed by phone on 25 Nov."
+              className={inputClass}
+            />
+          </FieldLabel>
+          <div className="flex justify-end gap-1">
+            <TextButton onClick={() => setClosing(null)}>Cancel</TextButton>
+            <TextButton type="submit" tone="primary" disabled={actionSaving}>
+              {actionSaving ? "Closing..." : "Close ticket"}
+            </TextButton>
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Reopen: reason required */}
+      <Dialog open={Boolean(reopening)} title={reopening ? `Reopen ${reopening.ticketCode}` : "Reopen"} onClose={() => setReopening(null)}>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (reopening && (await runAction(reopening, "reopen", { reason: reopenReason }, "reopened"))) setReopening(null);
+          }}
+          className="space-y-3"
+        >
+          <p className="text-[13px] text-[#4B5563]">
+            The ticket goes back to Diagnosing with a fresh SLA target, and the engineer is notified.
+          </p>
+          <FieldLabel label="Reason" required>
+            <textarea
+              rows={4}
+              required
+              minLength={5}
+              maxLength={2000}
+              value={reopenReason}
+              onChange={(e) => setReopenReason(e.target.value)}
+              placeholder="e.g. Customer reports the link dropped again at 14:20."
+              className={inputClass}
+            />
+          </FieldLabel>
+          <div className="flex justify-end gap-1">
+            <TextButton onClick={() => setReopening(null)}>Cancel</TextButton>
+            <TextButton type="submit" tone="primary" disabled={actionSaving || reopenReason.trim().length < 5}>
+              {actionSaving ? "Reopening..." : "Reopen"}
             </TextButton>
           </div>
         </form>

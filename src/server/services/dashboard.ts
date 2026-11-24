@@ -1,3 +1,4 @@
+import { isCorrectiveDone } from "@/shared/constants";
 import { desc } from "drizzle-orm";
 import {
   businessPartners,
@@ -44,9 +45,9 @@ export async function getDashboard() {
     db.select().from(emailAlertLogs).orderBy(desc(emailAlertLogs.sentAt)).limit(6),
   ]);
 
-  const openCorrective = cmRows.filter((c) => c.status !== "Resolved").length;
-  const resolvedCorrective = cmRows.filter((c) => c.status === "Resolved").length;
-  const criticalOpen = cmRows.filter((c) => c.status !== "Resolved" && c.severity === "Critical").length;
+  const openCorrective = cmRows.filter((c) => !isCorrectiveDone(c.status)).length;
+  const resolvedCorrective = cmRows.filter((c) => isCorrectiveDone(c.status)).length;
+  const criticalOpen = cmRows.filter((c) => !isCorrectiveDone(c.status) && c.severity === "Critical").length;
 
   const activePm = pmRows.filter((p) => p.status !== "Completed").length;
   const completedPm = pmRows.filter((p) => p.status === "Completed").length;
@@ -94,7 +95,7 @@ export async function getDashboard() {
     const name = (c.customerId && customerName.get(c.customerId)) || "Unassigned";
     const entry = incidentMap.get(name) ?? { customer: name, total: 0, open: 0 };
     entry.total += 1;
-    if (c.status !== "Resolved") entry.open += 1;
+    if (!isCorrectiveDone(c.status)) entry.open += 1;
     incidentMap.set(name, entry);
   }
   const incidentsByCustomer = [...incidentMap.values()]
@@ -122,7 +123,7 @@ export async function getDashboard() {
     if (i >= 0) upcomingWorkload[i].preventive += 1;
   }
   for (const c of cmRows) {
-    if (c.status === "Resolved") continue;
+    if (isCorrectiveDone(c.status)) continue;
     const i = bucket(c.dueDate);
     if (i >= 0) upcomingWorkload[i].corrective += 1;
   }

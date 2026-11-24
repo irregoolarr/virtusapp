@@ -39,6 +39,7 @@ export async function createPoc(d: CreateInput, actorId: number) {
   const [created] = await db
     .insert(pocRecords)
     .values({
+      id: seq,
       pocCode: nextFormattedCode("POC", seq),
       title: d.title,
       description: d.description,

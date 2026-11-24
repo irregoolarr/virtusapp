@@ -39,6 +39,7 @@ export async function createDeal(d: CreateInput, actorId: number) {
   const [created] = await db
     .insert(pipelineDeals)
     .values({
+      id: seq,
       dealCode: nextFormattedCode("PIP", seq),
       title: d.title,
       description: d.description,

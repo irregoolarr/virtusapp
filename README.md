@@ -264,10 +264,27 @@ All amounts (deal value, monthly fee, unit price, MRR) are stored and shown in *
 The dashboard shows a USD/IDR reference line from **Bank Indonesia — Kurs Transaksi BI** (`wskursbi.asmx`, middle of buy/sell),
 cached for 6 hours, with `open.er-api.com` as a labelled fallback when BI cannot be reached. USD is information only.
 
+## Corrective Maintenance workflow
+
+- **Lifecycle:** Reported → Diagnosing → In Repair → **Resolve** (resolution detail required, optional email to the customer contact) → **Close** (after the customer confirms). **Reopen** (reason required) sends a resolved/closed ticket back to Diagnosing with a fresh SLA target.
+- **Category / subcategory and source** (Phone, Email, Portal, WhatsApp, Monitoring Alert, Walk-in) on every ticket; Reports shows incidents by category and the SLA-met rate.
+- **SLA:** target defaults from priority (Critical 4h, High 8h, Medium 24h, Low 72h) and can be changed per ticket. The list shows a live countdown (on track / at risk / breached).
+  - A Critical ticket open longer than **Critical Escalation (Minutes)** in **Settings** emails all Super Admins and Service Managers once.
+  - A ticket past its SLA target emails the owner and managers once.
+  - These checks run with the reminder scheduler (local), the cron endpoint, **Run Due Reminders**, and automatically when the Dashboard or Corrective list is opened (at most once a minute).
+- **Service number** list is filtered by the selected customer, and the API rejects a service that belongs to another customer.
+- Every change, email and file is recorded in the ticket's **Activity History**.
+- Record codes (CM-2026-001…) come from the database sequence, so they are unique and never reused after a delete.
+
+> **Database tooling note:** PostgreSQL 18 needs `drizzle-kit` ≥ 0.31 (older versions try to drop PG18's named NOT NULL constraints on `db:push`).
+
 ## Attachments & Google Drive
 
-Corrective Maintenance tickets accept attachments (max 4 MB per file — Vercel's request limit; executable/HTML/SVG files are refused).
-Downloads always go through the app, so access stays permission-checked.
+Corrective Maintenance tickets accept attachments. Executable/HTML/SVG files are refused, and downloads always go through the app, so access stays permission-checked.
+PDFs, images and text files can be **previewed** in the app (served inline with a locked-down content policy; other types always download).
+
+- **Size limits:** 4 MB per file through the app (Vercel's request limit). With Google Drive connected, larger files (up to 100 MB)
+  are uploaded **directly from the browser to Google Drive** using a resumable upload session that the server creates in the ticket's folder; the server then verifies the file before recording it.
 
 - **Without Google Drive configured** files are stored in the database (`attachments.content`). Fine for testing.
 - **With Google Drive** files go to `VirtusMS Attachments/Corrective Maintenance/<CM code>/` in the connected Google account.

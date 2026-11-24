@@ -37,6 +37,8 @@ export interface GridAction<T> {
   onClick: (selected: T | null) => void;
   /** Requires a selected row. */
   needsSelection?: boolean;
+  /** Only enabled when the selected row passes this check (implies needsSelection). */
+  enabledFor?: (row: T) => boolean;
   disabled?: boolean;
   hidden?: boolean;
   active?: boolean;
@@ -200,7 +202,8 @@ export function DataGrid<T>({
 
   const renderActions = () =>
     visibleActions.map((a) => {
-      const disabled = a.disabled || (a.needsSelection && !selected);
+      const disabled =
+        a.disabled || ((a.needsSelection || a.enabledFor) && !selected) || Boolean(selected && a.enabledFor && !a.enabledFor(selected));
       const Icon = a.icon;
       return (
         <button

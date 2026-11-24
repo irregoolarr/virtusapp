@@ -34,6 +34,7 @@ export async function createEvent(d: CreateInput, actorId: number) {
   const [created] = await db
     .insert(events)
     .values({
+      id: seq,
       eventCode: nextFormattedCode("EVT", seq),
       title: d.title,
       description: d.description,

@@ -40,6 +40,7 @@ export async function createCustomer(d: CustomerInput, actorId: number) {
   const [created] = await db
     .insert(customers)
     .values({
+      id: seq,
       code: `CUST-${String(seq).padStart(3, "0")}`,
       name: d.name,
       industry: d.industry,
@@ -79,6 +80,7 @@ export async function createPartner(d: PartnerInput) {
   const [created] = await db
     .insert(businessPartners)
     .values({
+      id: seq,
       code: `PTR-${String(seq).padStart(3, "0")}`,
       name: d.name,
       partnerType: d.partnerType,

@@ -22,6 +22,8 @@ interface ReportData {
   };
   cmByStatus: Record<string, number>;
   cmBySeverity: Record<string, number>;
+  cmByCategory: Array<{ category: string; total: number; open: number }>;
+  slaMetPct: number | null;
   pipelineByStage: Array<{ stage: string; count: number; valueIdr: number }>;
   expiringServices: Array<{
     id: number;
@@ -155,7 +157,7 @@ export default function ReportsPage() {
         )}
 
         {/* Metrics Breakdown Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-5">
           {/* Corrective Breakdown */}
           <div className="rounded-sm border border-[#D9DEE3] bg-white p-5">
             <h3 className="text-[15px] font-semibold text-[#2B3036] mb-3">
@@ -183,6 +185,38 @@ export default function ReportsPage() {
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* Corrective by category */}
+          <div className="rounded-sm border border-[#D9DEE3] bg-white p-5">
+            <div className="flex items-baseline justify-between mb-3">
+              <h3 className="text-[15px] font-semibold text-[#2B3036]">Incidents by Category</h3>
+              <span className="text-[12px] text-[#6B7280]">
+                SLA met: {report?.slaMetPct === null || report?.slaMetPct === undefined ? "—" : `${report.slaMetPct}%`}
+              </span>
+            </div>
+            {(report?.cmByCategory ?? []).length === 0 ? (
+              <p className="text-[12.5px] text-[#6B7280]">No corrective tickets yet.</p>
+            ) : (
+              <table className="w-full text-[12.5px]">
+                <thead>
+                  <tr className="text-left text-[#6B7280]">
+                    <th className="font-medium pb-1.5">Category / Subcategory</th>
+                    <th className="font-medium pb-1.5 text-right">Open</th>
+                    <th className="font-medium pb-1.5 text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E9ECEF]">
+                  {(report?.cmByCategory ?? []).slice(0, 10).map((row) => (
+                    <tr key={row.category}>
+                      <td className="py-1.5">{row.category}</td>
+                      <td className="py-1.5 text-right tabular-nums">{row.open}</td>
+                      <td className="py-1.5 text-right tabular-nums font-semibold">{row.total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
 
           {/* Pipeline Breakdown */}

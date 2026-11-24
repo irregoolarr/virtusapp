@@ -41,6 +41,7 @@ export async function createImplementation(d: CreateInput, actorId: number) {
   const [created] = await db
     .insert(implementations)
     .values({
+      id: seq,
       projectCode: nextFormattedCode("IMP", seq),
       title: d.title,
       description: d.description,

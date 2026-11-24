@@ -14,6 +14,12 @@ const DEFAULT_OPS = {
   currencySymbol: "Rp",
 };
 
+/** Operational preferences (Settings page) merged over defaults. */
+export async function getOpsPreferences(): Promise<typeof DEFAULT_OPS> {
+  const [row] = await db.select().from(appSettings).where(eq(appSettings.key, "ops_preferences")).limit(1);
+  return { ...DEFAULT_OPS, ...((row?.value ?? {}) as Partial<typeof DEFAULT_OPS>) };
+}
+
 async function upsertSetting(key: string, value: Record<string, unknown>) {
   await db
     .insert(appSettings)

@@ -73,6 +73,57 @@ async function ensureFolder(name: string, parentId?: string): Promise<string> {
   return ((await created.json()) as { id: string }).id;
 }
 
+/** <root>/<section>/<recordCode>/ folder id, created on first use. */
+export async function ensureRecordFolder(section: string, recordCode: string): Promise<string> {
+  const root = process.env.GOOGLE_DRIVE_FOLDER_ID || (await ensureFolder("VirtusMS Attachments"));
+  return ensureFolder(recordCode, await ensureFolder(section, root));
+}
+
+/**
+ * Start a resumable upload so the browser can send a large file straight to Google
+ * (bypassing the ~4.5 MB serverless request limit). `origin` must be the app's origin
+ * so Google returns CORS headers for the browser's PUT.
+ */
+export async function createResumableSession(params: {
+  section: string;
+  recordCode: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  origin: string;
+}): Promise<string> {
+  const folder = await ensureRecordFolder(params.section, params.recordCode);
+  const res = await driveFetch(`${UPLOAD}?uploadType=resumable&supportsAllDrives=true&fields=id,name,size,webViewLink`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json; charset=UTF-8",
+      "X-Upload-Content-Type": params.mimeType,
+      "X-Upload-Content-Length": String(params.size),
+      Origin: params.origin,
+    },
+    body: JSON.stringify({ name: params.fileName, parents: [folder] }),
+  });
+  const location = res.headers.get("location");
+  if (!location) throw new Error("Google Drive did not return an upload session URL");
+  return location;
+}
+
+export async function getDriveFile(fileId: string): Promise<{
+  id: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  parents: string[];
+  webViewLink: string | null;
+} | null> {
+  const res = await driveFetch(
+    `${API}/files/${encodeURIComponent(fileId)}?supportsAllDrives=true&fields=id,name,size,mimeType,parents,webViewLink`
+  );
+  if (res.status === 404) return null;
+  const f = (await res.json()) as { id: string; name: string; size?: string; mimeType: string; parents?: string[]; webViewLink?: string };
+  return { id: f.id, name: f.name, size: Number(f.size ?? 0), mimeType: f.mimeType, parents: f.parents ?? [], webViewLink: f.webViewLink ?? null };
+}
+
 /** Upload into <root>/<section>/<recordCode>/ and return the Drive file id + link. */
 export async function uploadToDrive(params: {
   section: string;
@@ -81,9 +132,7 @@ export async function uploadToDrive(params: {
   mimeType: string;
   bytes: Buffer;
 }): Promise<{ id: string; webViewLink: string | null }> {
-  const root = process.env.GOOGLE_DRIVE_FOLDER_ID || (await ensureFolder("VirtusMS Attachments"));
-  const section = await ensureFolder(params.section, root);
-  const folder = await ensureFolder(params.recordCode, section);
+  const folder = await ensureRecordFolder(params.section, params.recordCode);
 
   const boundary = `virtus-${crypto.randomUUID()}`;
   const meta = JSON.stringify({ name: params.fileName, parents: [folder] });

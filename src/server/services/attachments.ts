@@ -3,9 +3,17 @@ import { attachments, db, users } from "@/db";
 import type { AuthenticatedUser } from "@/lib/auth";
 import { ENTITY_PERMISSIONS, recordCode, type EntityType } from "@/server/entities";
 import { ApiError, badRequest, notFound, serialize } from "@/server/http";
-import { deleteFromDrive, downloadFromDrive, isDriveConfigured, uploadToDrive } from "@/server/storage/googleDrive";
+import {
+  createResumableSession,
+  deleteFromDrive,
+  downloadFromDrive,
+  ensureRecordFolder,
+  getDriveFile,
+  isDriveConfigured,
+  uploadToDrive,
+} from "@/server/storage/googleDrive";
 import type { AttachmentItem } from "@/shared/types";
-import { ATTACHMENT_MAX_BYTES } from "@/shared/constants";
+import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_BYTES_DRIVE } from "@/shared/constants";
 import { logActivity } from "./activities";
 
 // Executable / scriptable types are refused; everything is served as a download.
@@ -39,7 +47,7 @@ export async function uploadAttachment(entityType: EntityType, entityId: number,
   if (file.size > ATTACHMENT_MAX_BYTES) {
     throw badRequest(`File is larger than ${Math.round(ATTACHMENT_MAX_BYTES / 1024 / 1024)} MB`);
   }
-  const fileName = file.name.replace(/[\\/\u0000-\u001f]/g, "_").slice(0, 255) || "attachment";
+  const fileName = cleanName(file.name);
   if (BLOCKED.test(fileName)) throw badRequest("This file type is not allowed");
 
   const code = await recordCode(entityType, entityId);
@@ -130,3 +138,74 @@ export async function deleteAttachmentRow(id: number): Promise<void> {
 }
 
 export const attachmentStorageMode = () => (isDriveConfigured() ? "Google Drive" : "Database");
+
+/** What the browser may upload: size limit and whether direct-to-Drive uploads are available. */
+export function attachmentConfig() {
+  const drive = isDriveConfigured();
+  return { storage: attachmentStorageMode(), maxBytes: drive ? ATTACHMENT_MAX_BYTES_DRIVE : ATTACHMENT_MAX_BYTES, proxyMaxBytes: ATTACHMENT_MAX_BYTES, directUpload: drive };
+}
+
+const cleanName = (name: string) => name.replace(/[\\/\u0000-\u001f]/g, "_").slice(0, 255) || "attachment";
+
+/** Step 1 of a large upload: create a Google Drive upload session for the browser. */
+export async function startDirectUpload(
+  entityType: EntityType,
+  entityId: number,
+  meta: { fileName: string; mimeType: string; size: number },
+  origin: string
+): Promise<{ uploadUrl: string }> {
+  if (!isDriveConfigured()) throw badRequest("Large uploads need Google Drive to be connected");
+  if (meta.size <= 0 || meta.size > ATTACHMENT_MAX_BYTES_DRIVE) {
+    throw badRequest(`File must be between 1 byte and ${ATTACHMENT_MAX_BYTES_DRIVE / 1024 / 1024} MB`);
+  }
+  const fileName = cleanName(meta.fileName);
+  if (BLOCKED.test(fileName)) throw badRequest("This file type is not allowed");
+  const code = await recordCode(entityType, entityId);
+  const uploadUrl = await createResumableSession({
+    section: ENTITY_PERMISSIONS[entityType].section,
+    recordCode: code,
+    fileName,
+    mimeType: (meta.mimeType || "application/octet-stream").slice(0, 150),
+    size: meta.size,
+    origin,
+  });
+  return { uploadUrl };
+}
+
+/** Step 2: the browser finished the upload — verify the Drive file and record it. */
+export async function completeDirectUpload(entityType: EntityType, entityId: number, driveFileId: string, actor: AuthenticatedUser) {
+  const code = await recordCode(entityType, entityId);
+  const file = await getDriveFile(driveFileId);
+  if (!file) throw badRequest("Uploaded file was not found in Google Drive");
+  // Only accept files that landed in this record's own folder.
+  const folder = await ensureRecordFolder(ENTITY_PERMISSIONS[entityType].section, code);
+  if (!file.parents.includes(folder)) throw badRequest("Uploaded file is not in this record's folder");
+  if (BLOCKED.test(file.name) || file.size > ATTACHMENT_MAX_BYTES_DRIVE) {
+    await deleteFromDrive(file.id).catch(() => undefined);
+    throw badRequest("This file is not allowed");
+  }
+  const [created] = await db
+    .insert(attachments)
+    .values({
+      entityType,
+      entityId,
+      fileName: cleanName(file.name),
+      mimeType: file.mimeType.slice(0, 150),
+      sizeBytes: file.size,
+      storage: "drive",
+      driveFileId: file.id,
+      driveLink: file.webViewLink,
+      uploadedById: actor.id,
+    })
+    .returning(listColumns);
+  await logActivity({
+    entityType,
+    entityId,
+    type: "Attachment",
+    category: "Attachment Added",
+    subject: `${code} - ${created.fileName} attached`,
+    body: "Stored in Google Drive (direct upload)",
+    actorId: actor.id,
+  });
+  return serialize({ ...created, uploadedByName: actor.name });
+}

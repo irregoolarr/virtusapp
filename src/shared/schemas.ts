@@ -2,6 +2,8 @@
 import { z } from "zod";
 import {
   AVAILABILITIES,
+  CM_CATEGORY_NAMES,
+  CM_SOURCES,
   COMMENT_ENTITY_TYPES,
   CORRECTIVE_STAGES,
   CUSTOMER_STATUSES,
@@ -37,6 +39,9 @@ export const correctiveCreateSchema = z.object({
   status: z.enum(CORRECTIVE_STAGES).default("Reported"),
   rootCause: z.string().optional().nullable(),
   resolutionDetail: z.string().optional().nullable(),
+  category: z.enum(CM_CATEGORY_NAMES as [string, ...string[]]).default("Other"),
+  subcategory: z.string().trim().min(1).max(80).default("General"),
+  source: z.enum(CM_SOURCES).default("Portal"),
   dueDate: z.string().optional().nullable(),
   customerId: z.number().int().positive().optional().nullable(),
   partnerId: z.number().int().positive().optional().nullable(),
@@ -241,6 +246,19 @@ export const settingsUpdateSchema = z.object({
 export const reportEmailSchema = z.object({
   recipients: z.array(z.string().email()).min(1),
   subject: z.string().min(2).max(200).optional(),
+});
+
+export const resolveSchema = z.object({
+  resolutionDetail: z.string().trim().min(5, "Describe the resolution (at least 5 characters)").max(5000),
+  notifyCustomer: z.boolean().default(false),
+});
+
+export const closeSchema = z.object({
+  note: z.string().trim().max(2000).default(""),
+});
+
+export const reopenSchema = z.object({
+  reason: z.string().trim().min(5, "Give a reason for reopening (at least 5 characters)").max(2000),
 });
 
 // Profile (self-service)

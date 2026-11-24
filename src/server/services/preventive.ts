@@ -39,6 +39,7 @@ export async function createPreventive(d: CreateInput, actorId: number) {
   const [created] = await db
     .insert(preventiveMaintenances)
     .values({
+      id: seq,
       planCode: nextFormattedCode("PM", seq),
       title: d.title,
       description: d.description,

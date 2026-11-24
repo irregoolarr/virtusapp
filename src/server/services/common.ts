@@ -1,13 +1,18 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, getTableName, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db, entityComments } from "@/db";
 
-/** Next sequence number for human-readable codes (CM-2026-009 etc.). */
+/**
+ * Reserve the next id from the table's own serial sequence. The record is then
+ * inserted with this id, and its human code (CM-2026-009) is derived from it, so
+ * codes are unique, never reused after a delete, and safe under concurrent creates.
+ */
 export async function nextSequence(idColumn: AnyPgColumn): Promise<number> {
-  const [{ maxId }] = await db
-    .select({ maxId: sql<number>`COALESCE(MAX(${idColumn}), 0)::int` })
-    .from(idColumn.table);
-  return maxId + 1;
+  const table = getTableName(idColumn.table);
+  const { rows } = await db.execute<{ id: string }>(
+    sql`SELECT nextval(pg_get_serial_sequence(${table}, ${idColumn.name}))::text AS id`
+  );
+  return Number(rows[0].id);
 }
 
 /** e.g. nextFormattedCode("CM", 9) -> "CM-2026-009" */

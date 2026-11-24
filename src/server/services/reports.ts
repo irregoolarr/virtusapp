@@ -1,3 +1,4 @@
+import { isCorrectiveDone } from "@/shared/constants";
 import { desc } from "drizzle-orm";
 import {
   correctiveMaintenances,
@@ -117,7 +118,27 @@ export async function getReportSummary() {
     Diagnosing: cm.filter((x) => x.status === "Diagnosing").length,
     "In Repair": cm.filter((x) => x.status === "In Repair").length,
     Resolved: cm.filter((x) => x.status === "Resolved").length,
+    Closed: cm.filter((x) => x.status === "Closed").length,
   };
+
+  // Category → count, plus SLA met/missed for finished tickets (reporting by category).
+  const cmByCategory = Object.entries(
+    cm.reduce<Record<string, { total: number; open: number }>>((acc, c) => {
+      const key = `${c.category} / ${c.subcategory}`;
+      acc[key] ??= { total: 0, open: 0 };
+      acc[key].total += 1;
+      if (!isCorrectiveDone(c.status)) acc[key].open += 1;
+      return acc;
+    }, {})
+  )
+    .map(([category, v]) => ({ category, ...v }))
+    .sort((x, y) => y.total - x.total);
+
+  const finished = cm.filter((c) => isCorrectiveDone(c.status) && c.dueDate && c.resolvedAt);
+  const slaMetPct =
+    finished.length > 0
+      ? Math.round((finished.filter((c) => c.resolvedAt! <= c.dueDate!).length / finished.length) * 100)
+      : null;
 
   const cmBySeverity = {
     Critical: cm.filter((x) => x.severity === "Critical").length,
@@ -167,6 +188,8 @@ export async function getReportSummary() {
     },
     cmByStatus,
     cmBySeverity,
+    cmByCategory,
+    slaMetPct,
     pipelineByStage,
     expiringServices,
     recentAlerts: alertLogs,
@@ -182,7 +205,7 @@ export async function emailReportDigest(input: z.output<typeof reportEmailSchema
     db.select().from(serviceNumbers),
   ]);
 
-  const openCm = cm.filter((c) => c.status !== "Resolved").length;
+  const openCm = cm.filter((c) => !isCorrectiveDone(c.status)).length;
   const completedPm = pm.filter((p) => p.status === "Completed").length;
   const closedDealsIdr = deals
     .filter((d) => d.stage === "Deal Closed")
