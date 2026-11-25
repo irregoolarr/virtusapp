@@ -370,7 +370,6 @@ export default function ImplementationsPage() {
         canDelete={Boolean(editing && can("delivery:delete"))}
         onDelete={() => deleteProject(editing)}
         size="wide"
-        placement="center"
         showComments={false}
       >
         {editing && canWrite && !live && (

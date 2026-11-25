@@ -372,7 +372,6 @@ export default function PocPage() {
         canDelete={Boolean(editing && can("delivery:delete"))}
         onDelete={() => deletePoc(editing)}
         size="wide"
-        placement="center"
         showComments={false}
       >
         {editing && canWrite && !decided && (

@@ -424,7 +424,6 @@ export default function PreventivePage() {
         canDelete={Boolean(editing && can("maintenance:delete"))}
         onDelete={() => deletePlan(editing)}
         size="wide"
-        placement="center"
         showComments={false}
       >
         {editing && canWrite && !completed && (

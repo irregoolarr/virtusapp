@@ -25,7 +25,7 @@ interface RecordModalProps {
   onDelete?: () => Promise<void> | void;
   /** "wide" for records with grids inside (e.g. Activity History). */
   size?: "default" | "wide";
-  /** "right" = slide-in side panel (default); "center" = centered window. */
+  /** "center" = centered window (default for every module); "right" = slide-in side panel. */
   placement?: "right" | "center";
   /** Show the simple notes thread (modules without an Activity History). */
   showComments?: boolean;
@@ -42,7 +42,7 @@ export function RecordModal({
   canDelete,
   onDelete,
   size = "default",
-  placement = "right",
+  placement = "center",
   showComments = true,
   children,
 }: RecordModalProps) {
@@ -140,7 +140,7 @@ export function RecordModal({
           placement === "center"
             ? "dialog-in max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)] border border-[#D9DEE3] rounded-sm"
             : "drawer-in h-full border-l border-[#D9DEE3]",
-          size === "wide" ? "max-w-4xl" : "max-w-xl"
+          size === "wide" ? "max-w-4xl" : placement === "center" ? "max-w-2xl" : "max-w-xl"
         )}
       >
         {/* Header */}
