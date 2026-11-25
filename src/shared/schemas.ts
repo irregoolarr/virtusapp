@@ -13,12 +13,14 @@ import {
   EVENT_STATUSES,
   EVENT_TYPES,
   IMPLEMENTATION_STAGES,
+  IMPLEMENTATION_TYPES,
   PARTNER_STATUSES,
   PARTNER_TIERS,
   PARTNER_TYPES,
   PIPELINE_STAGES,
   PM_CATEGORY_NAMES,
   PM_FREQUENCIES,
+  POC_DECISIONS,
   POC_OUTCOMES,
   POC_STAGES,
   PREVENTIVE_STAGES,
@@ -73,6 +75,7 @@ export const implementationCreateSchema = z.object({
   title: z.string().min(2).max(180),
   description: z.string().min(2),
   status: z.enum(IMPLEMENTATION_STAGES).default("Kickoff"),
+  projectType: z.enum(IMPLEMENTATION_TYPES).default("Other"),
   progressPct: z.number().int().min(0).max(100).default(20),
   targetGoLive: z.string().optional().nullable(),
   blockers: z.string().optional().nullable(),
@@ -271,6 +274,26 @@ export const pmCompleteSchema = z.object({
   nextScheduledDate: z.string().optional().nullable(),
   notifyCustomer: z.boolean().default(false),
 });
+
+export const goLiveSchema = z.object({
+  handoverNotes: z.string().trim().min(5, "Describe the handover (at least 5 characters)").max(5000),
+  notifyCustomer: z.boolean().default(false),
+});
+
+export const pocDecideSchema = z
+  .object({
+    outcome: z.enum(POC_DECISIONS),
+    evaluationScore: z.number().int().min(0).max(100),
+    decisionNotes: z.string().trim().min(5, "Explain the decision (at least 5 characters)").max(5000),
+    newReviewDate: z.string().optional().nullable(),
+    notifyCustomer: z.boolean().default(false),
+    createDeal: z.boolean().default(false),
+    dealValueIdr: z.number().int().min(0).default(0),
+  })
+  .refine((d) => d.outcome !== "Extended" || Boolean(d.newReviewDate), {
+    message: "A new review date is required to extend the POC",
+    path: ["newReviewDate"],
+  });
 
 // Profile (self-service)
 export const profileNameSchema = z.object({

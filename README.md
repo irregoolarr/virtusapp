@@ -281,9 +281,15 @@ cached for 6 hours, with `open.er-api.com` as a labelled fallback when BI cannot
 ## Preventive Maintenance workflow
 
 - **Visits** have a category and item type (Firewall, UPS, Backup Verification, …). New plans get that type's **standard checklist** pre-filled (editable).
-- **Lifecycle:** Scheduled → In Progress → Verification → **Complete** (findings & actions required; warns about unticked checklist steps; optional PM report email to the customer; optionally **schedules the next visit** from the frequency — Monthly +1, Quarterly +3, Semi-Annual +6, Annual +12 months, same day, checklist reset). **Reopen** needs a reason.
+- **Lifecycle:** Scheduled → In Progress → Verification → **Complete** (findings & actions required; warns about unticked checklist steps; optional PM report email to the customer; optionally **schedules the next visit** from the frequency — Monthly +1, Quarterly +3, Semi-Annual +6, Annual +12 months, same day, checklist reset). Completed visits are not reopened — a problem found later is a new visit or a Corrective ticket; the completion report stays editable.
 - **Schedule tracking:** the list shows *Due in …*, *Due today*, *Overdue …*, *Done on time / late*. The engineer gets a reminder email 24 hours before the visit, and the engineer plus managers get an overdue alert once the scheduled day has passed (each sent once per date; rescheduling re-arms them).
 - Same as Corrective: service list filtered by customer, attachments with preview, Activity History, centered window, ESC / unsaved-changes prompt.
+
+## Implementations & POC workflow
+
+- **Implementations:** project type, phases Kickoff → Configuration → UAT / Staging, milestones (ticking them moves progress), and a **Blocker** field — saving a blocker emails the lead and managers. **Go-Live** finishes the project: handover notes required, progress 100%, milestones closed, optional customer email. Target go-live countdown with a reminder to the lead 7 days before and a one-time alert to lead + managers when it slips.
+- **POC:** success criteria, score, review date countdown (reminder 3 days before, alert when the review passes undecided). **Decide** records the outcome: **Success** (→ Approved, optional pipeline deal in Negotiation with the deal value in IDR), **Extend** (new review date, alerts re-armed) or **Drop**; optional customer email.
+- Both: attachments with preview, Activity History, centered window. Finished records (live / decided) are not reopened.
 
 ## Attachments & Google Drive
 

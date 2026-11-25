@@ -6,7 +6,7 @@ import { PM_CATEGORIES } from "@/shared/constants";
 import { nextVisitDate } from "@/shared/pm";
 import { formatDuration } from "@/shared/sla";
 import type { PreventiveItem } from "@/shared/types";
-import { pmCompleteSchema, preventiveCreateSchema, reopenSchema } from "@/shared/schemas";
+import { pmCompleteSchema, preventiveCreateSchema } from "@/shared/schemas";
 import type { z } from "zod";
 import { logActivity, notifyByEmail } from "./activities";
 import {
@@ -218,7 +218,7 @@ export async function deletePreventive(id: number): Promise<void> {
   await removeRecordArtifacts(ENTITY, id);
 }
 
-// ---- Lifecycle: Complete (+ schedule next visit) / Reopen ---------------------------
+// ---- Lifecycle: Complete (+ schedule next visit) ------------------------------------
 
 export async function completePreventive(id: number, d: z.output<typeof pmCompleteSchema>, actorId: number) {
   const before = await getPlan(id);
@@ -295,22 +295,6 @@ export async function completePreventive(id: number, d: z.output<typeof pmComple
   return { item: serialize(after), next: next ? serialize(next) : null };
 }
 
-export async function reopenPreventive(id: number, d: z.output<typeof reopenSchema>, actorId: number) {
-  const before = await getPlan(id);
-  if (before.status !== "Completed") throw badRequest(`${before.planCode} is not completed`);
-  const [after] = await db
-    .update(preventiveMaintenances)
-    .set({ status: "In Progress", lastCompletedAt: null, reopenCount: before.reopenCount + 1, updatedAt: new Date() })
-    .where(eq(preventiveMaintenances.id, id))
-    .returning();
-  const base = { entityType: ENTITY, entityId: id, actorId };
-  await logActivity({ ...base, type: "Update", category: "Reopened", subject: `${after.planCode} has been reopened (${after.reopenCount}x)`, body: d.reason });
-  const assignee = await userContact(after.assigneeId);
-  if (assignee) {
-    await notifyByEmail({ ...base, to: [assignee.email], subject: `${after.planCode} has been reopened`, body: `${after.planCode} — ${after.title}\n\nReason:\n${d.reason}` });
-  }
-  return serialize(after);
-}
 
 // ---- Schedule monitoring --------------------------------------------------------
 

@@ -108,3 +108,25 @@ export const PM_DEFAULT_CHECKLIST = [
 export const PM_FREQUENCY_MONTHS: Record<string, number> = { Monthly: 1, Quarterly: 3, "Semi-Annual": 6, Annual: 12 };
 /** A visit counts as "due soon" this many days ahead. */
 export const PM_DUE_SOON_DAYS = 3;
+
+// ---- Implementations -------------------------------------------------------------
+
+export const IMPLEMENTATION_TYPES = [
+  "Network Deployment",
+  "Security Deployment",
+  "Data Center / Cloud",
+  "Software Rollout",
+  "Managed Service Onboarding",
+  "Migration / Upgrade",
+  "Other",
+] as const;
+/** Lead is reminded this many days before the target go-live. */
+export const IMPL_DUE_SOON_DAYS = 7;
+
+// ---- POC -------------------------------------------------------------------------
+
+/** Decisions that end (Success, Dropped) or prolong (Extended) a POC. */
+export const POC_DECISIONS = ["Success", "Extended", "Dropped"] as const;
+export const isPocFinished = (outcome: string) => outcome === "Success" || outcome === "Dropped";
+/** Lead is reminded this many days before the review date. */
+export const POC_DUE_SOON_DAYS = 3;

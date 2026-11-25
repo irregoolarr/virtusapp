@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCheck, CheckSquare, Plus, RotateCcw, Square, X } from "lucide-react";
+import { CheckCheck, CheckSquare, Plus, Square, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { DataGrid, GridPage, GridSelect, type GridColumn } from "@/components/grid/DataGrid";
 import { DetailList } from "@/components/grid/DetailPane";
@@ -105,8 +105,6 @@ export default function PreventivePage() {
 
   const [completing, setCompleting] = useState<PreventiveRow | null>(null);
   const [completion, setCompletion] = useState({ notes: "", scheduleNext: true, nextDate: "", notifyCustomer: false });
-  const [reopening, setReopening] = useState<PreventiveRow | null>(null);
-  const [reopenReason, setReopenReason] = useState("");
   const [actionSaving, setActionSaving] = useState(false);
 
   const loadItems = useCallback(async () => {
@@ -318,29 +316,6 @@ export default function PreventivePage() {
     }
   };
 
-  const submitReopen = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!reopening) return;
-    setActionSaving(true);
-    try {
-      const res = await fetch(`/api/maintenance/preventive/${reopening.id}/reopen`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: reopenReason }),
-      });
-      if (!res.ok) {
-        notify((await res.json().catch(() => ({}))).error || "Could not reopen", "error");
-        return;
-      }
-      notify(`${reopening.planCode} reopened`);
-      setReopening(null);
-      setModalOpen(false);
-      await refreshAll();
-    } finally {
-      setActionSaving(false);
-    }
-  };
-
   // ---- Grid ----------------------------------------------------------------------
 
   const checksDone = (r: PreventiveRow) => (r.checklist ?? []).filter((c) => c.done).length;
@@ -407,16 +382,6 @@ export default function PreventivePage() {
             { label: "New", onClick: openCreate, hidden: !canWrite },
             { label: "Open", needsSelection: true, onClick: (r) => r && openEdit(r) },
             { label: "Complete", hidden: !canWrite, enabledFor: (r) => r.status !== "Completed", onClick: openComplete },
-            {
-              label: "Reopen",
-              hidden: !canWrite,
-              enabledFor: (r) => r.status === "Completed",
-              onClick: (r) => {
-                if (!r) return;
-                setReopenReason("");
-                setReopening(r);
-              },
-            },
             { label: "Delete", needsSelection: true, tone: "danger", hidden: !can("maintenance:delete"), onClick: (r) => void deletePlan(r) },
           ]}
           filters={
@@ -462,23 +427,12 @@ export default function PreventivePage() {
         placement="center"
         showComments={false}
       >
-        {editing && canWrite && (
+        {editing && canWrite && !completed && (
           <div className="flex flex-wrap gap-2" data-ignore-dirty>
-            {!completed ? (
+            {!completed && (
               <TextButton tone="primary" onClick={() => openComplete(editing)}>
                 <span className="inline-flex items-center gap-1.5">
                   <CheckCheck className="w-4 h-4" /> Complete visit
-                </span>
-              </TextButton>
-            ) : (
-              <TextButton
-                onClick={() => {
-                  setReopenReason("");
-                  setReopening(editing);
-                }}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <RotateCcw className="w-4 h-4" /> Reopen
                 </span>
               </TextButton>
             )}
@@ -752,30 +706,6 @@ export default function PreventivePage() {
         </form>
       </Dialog>
 
-      {/* Reopen */}
-      <Dialog open={Boolean(reopening)} title={reopening ? `Reopen ${reopening.planCode}` : "Reopen"} onClose={() => setReopening(null)}>
-        <form onSubmit={submitReopen} className="space-y-3">
-          <p className="text-[13px] text-[#4B5563]">The visit goes back to In Progress and the engineer is notified.</p>
-          <FieldLabel label="Reason" required>
-            <textarea
-              rows={4}
-              required
-              minLength={5}
-              maxLength={2000}
-              value={reopenReason}
-              onChange={(e) => setReopenReason(e.target.value)}
-              placeholder="e.g. Backup test-restore was not performed."
-              className={inputClass}
-            />
-          </FieldLabel>
-          <div className="flex justify-end gap-1">
-            <TextButton onClick={() => setReopening(null)}>Cancel</TextButton>
-            <TextButton type="submit" tone="primary" disabled={actionSaving || reopenReason.trim().length < 5}>
-              {actionSaving ? "Reopening..." : "Reopen"}
-            </TextButton>
-          </div>
-        </form>
-      </Dialog>
     </AppShell>
   );
 }

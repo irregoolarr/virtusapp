@@ -628,7 +628,7 @@ test("Corrective: categories, SLA default & breach alert, resolve → close → 
   for (const c of [custAId, custBId]) assert.equal((await api(`/api/customers/${c}`, { method: "DELETE" }, adminCookie)).status, 200);
 });
 
-test("Preventive: type check, reminder & overdue alerts, complete → next visit, reopen", async () => {
+test("Preventive: type check, reminder & overdue alerts, complete → next visit", async () => {
   const adminCookie = await loginAs(ADMIN_EMAIL);
   const post = (path: string, body: unknown) => api(path, { method: "POST", body: JSON.stringify(body) }, adminCookie);
   const base = { description: "Automated PM test", frequency: "Quarterly", category: "Security", subcategory: "Firewall" };
@@ -675,17 +675,108 @@ test("Preventive: type check, reminder & overdue alerts, complete → next visit
   expected.setMonth(expected.getMonth() + 3);
   assert.ok(Math.abs(new Date(next.scheduledDate).getTime() - expected.getTime()) < 3 * 86_400_000, "next visit ~3 months later");
 
-  const reopened = await post(`/api/maintenance/preventive/${overdueId}/reopen`, { reason: "HA check incomplete" });
-  assert.equal(reopened.status, 200);
-  assert.equal((reopened.json as { item: { status: string } }).item.status, "In Progress");
+
+  // Completed visits cannot be reopened (no such action for PM)
+  const noReopen = await post(`/api/maintenance/preventive/${overdueId}/reopen`, { reason: "should not exist" });
+  assert.equal(noReopen.status, 404);
 
   const history = await api(`/api/activities?entityType=preventive&entityId=${overdueId}`, {}, adminCookie);
   const cats = (history.json as { items: Array<{ category: string }> }).items.map((a) => a.category);
-  for (const expectedCat of ["Visit Scheduled", "Overdue", "Completed", "Next Visit", "Reopened"]) {
+  for (const expectedCat of ["Visit Scheduled", "Overdue", "Completed", "Next Visit"]) {
     assert.ok(cats.includes(expectedCat), `missing ${expectedCat}: ${cats.join(", ")}`);
   }
 
   for (const id of [overdueId, soonId, next.id]) {
     assert.equal((await api(`/api/maintenance/preventive/${id}`, { method: "DELETE" }, adminCookie)).status, 200);
   }
+});
+
+test("Implementations: blocker alert, reminder & late alert, Go-Live with handover", async () => {
+  const adminCookie = await loginAs(ADMIN_EMAIL);
+  const post = (path: string, body: unknown) => api(path, { method: "POST", body: JSON.stringify(body) }, adminCookie);
+  const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+
+  const late = await post("/api/implementations", {
+    title: "Late SD-WAN rollout",
+    description: "Automated test",
+    projectType: "Network Deployment",
+    targetGoLive: day(-3),
+    milestones: [
+      { id: "m1", title: "Design", completed: true },
+      { id: "m2", title: "Cut-over", completed: false },
+    ],
+  });
+  assert.equal(late.status, 201, JSON.stringify(late.json));
+  const lateId = (late.json as { item: { id: number } }).item.id;
+  const soon = await post("/api/implementations", { title: "Firewall rollout", description: "Automated test", targetGoLive: day(5) });
+  const soonId = (soon.json as { item: { id: number } }).item.id;
+
+  // Go-Live only through the action
+  const viaForm = await api(`/api/implementations/${lateId}`, { method: "PATCH", body: JSON.stringify({ status: "Go-Live" }) }, adminCookie);
+  assert.equal(viaForm.status, 400);
+
+  // Raising a blocker is recorded and announced
+  const blocked = await api(`/api/implementations/${lateId}`, { method: "PATCH", body: JSON.stringify({ blockers: "Waiting for ISP circuit" }) }, adminCookie);
+  assert.equal(blocked.status, 200);
+
+  const run = (await post("/api/events/process", {})).json as { implementation: { reminded: number; overdue: number } };
+  assert.ok(run.implementation.overdue >= 1 && run.implementation.reminded >= 1, JSON.stringify(run.implementation));
+  const again = (await post("/api/events/process", {})).json as { implementation: { reminded: number; overdue: number } };
+  assert.deepEqual(again.implementation, { reminded: 0, overdue: 0 });
+
+  const live = await post(`/api/implementations/${lateId}/go-live`, { handoverNotes: "Cut-over done, NOC monitoring added" });
+  assert.equal(live.status, 200, JSON.stringify(live.json));
+  const item = (live.json as { item: { status: string; progressPct: number; blockers: string | null; milestones: Array<{ completed: boolean }> } }).item;
+  assert.equal(item.status, "Go-Live");
+  assert.equal(item.progressPct, 100);
+  assert.equal(item.blockers, null);
+  assert.ok(item.milestones.every((m) => m.completed));
+  assert.equal((await post(`/api/implementations/${lateId}/go-live`, { handoverNotes: "again please" })).status, 400);
+
+  const history = await api(`/api/activities?entityType=implementation&entityId=${lateId}`, {}, adminCookie);
+  const cats = (history.json as { items: Array<{ category: string }> }).items.map((a) => a.category);
+  for (const c of ["Project Created", "Blocker Raised", "Overdue", "Go-Live"]) assert.ok(cats.includes(c), `missing ${c}: ${cats.join(", ")}`);
+
+  for (const id of [lateId, soonId]) assert.equal((await api(`/api/implementations/${id}`, { method: "DELETE" }, adminCookie)).status, 200);
+});
+
+test("POC: decision guard, review alerts, extend, approve → pipeline deal", async () => {
+  const adminCookie = await loginAs(ADMIN_EMAIL);
+  const post = (path: string, body: unknown) => api(path, { method: "POST", body: JSON.stringify(body) }, adminCookie);
+  const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+
+  const poc = await post("/api/poc", { title: "EDR trial", description: "Automated test", successCriteria: "Detect 95% of test samples", targetReviewDate: day(-2) });
+  assert.equal(poc.status, 201, JSON.stringify(poc.json));
+  const id = (poc.json as { item: { id: number } }).item.id;
+
+  // Outcome / approval only through Decide
+  assert.equal((await api(`/api/poc/${id}`, { method: "PATCH", body: JSON.stringify({ status: "Approved" }) }, adminCookie)).status, 400);
+  assert.equal((await api(`/api/poc/${id}`, { method: "PATCH", body: JSON.stringify({ outcome: "Success" }) }, adminCookie)).status, 400);
+
+  const run = (await post("/api/events/process", {})).json as { poc: { overdue: number } };
+  assert.ok(run.poc.overdue >= 1);
+
+  // Extend requires a new date and re-arms the alerts
+  assert.equal((await post(`/api/poc/${id}/decide`, { outcome: "Extended", evaluationScore: 60, decisionNotes: "Need more samples" })).status, 400);
+  const ext = await post(`/api/poc/${id}/decide`, { outcome: "Extended", evaluationScore: 60, decisionNotes: "Need more samples", newReviewDate: day(10) });
+  assert.equal(ext.status, 200, JSON.stringify(ext.json));
+  const extItem = (ext.json as { item: { outcome: string; extendedCount: number; overdueNotifiedAt: string | null } }).item;
+  assert.equal(extItem.outcome, "Extended");
+  assert.equal(extItem.extendedCount, 1);
+  assert.equal(extItem.overdueNotifiedAt, null);
+
+  const ok = await post(`/api/poc/${id}/decide`, { outcome: "Success", evaluationScore: 96, decisionNotes: "All criteria met", createDeal: true, dealValueIdr: 250_000_000 });
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+  const { item, deal } = ok.json as { item: { status: string; outcome: string }; deal: { id: number; dealCode: string } };
+  assert.equal(item.status, "Approved");
+  assert.equal(item.outcome, "Success");
+  assert.ok(deal?.dealCode.startsWith("PIP-"));
+  assert.equal((await post(`/api/poc/${id}/decide`, { outcome: "Dropped", evaluationScore: 0, decisionNotes: "too late" })).status, 400);
+
+  const history = await api(`/api/activities?entityType=poc&entityId=${id}`, {}, adminCookie);
+  const cats = (history.json as { items: Array<{ category: string }> }).items.map((a) => a.category);
+  for (const c of ["POC Created", "Overdue", "Decision: Extended", "Decision: Success", "Pipeline Deal"]) assert.ok(cats.includes(c), `missing ${c}: ${cats.join(", ")}`);
+
+  assert.equal((await api(`/api/pipeline/${deal.id}`, { method: "DELETE" }, adminCookie)).status, 200);
+  assert.equal((await api(`/api/poc/${id}`, { method: "DELETE" }, adminCookie)).status, 200);
 });

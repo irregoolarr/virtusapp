@@ -1,5 +1,7 @@
-// Time-based checks: Corrective SLA escalation/breach and Preventive reminders/overdue.
+// Time-based checks: Corrective SLA, Preventive visits, Implementation go-live and POC review dates.
 import { runSlaChecks } from "./corrective";
+import { runImplChecks } from "./implementations";
+import { runPocChecks } from "./poc";
 import { runPmChecks } from "./preventive";
 
 let lastRun = 0;
@@ -11,8 +13,8 @@ let lastRun = 0;
 export async function runScheduledChecks(opts: { minIntervalMs?: number } = {}) {
   if (opts.minIntervalMs && Date.now() - lastRun < opts.minIntervalMs) return null;
   lastRun = Date.now();
-  const [sla, pm] = await Promise.all([runSlaChecks(), runPmChecks()]);
-  return { sla, pm };
+  const [sla, pm, implementation, poc] = await Promise.all([runSlaChecks(), runPmChecks(), runImplChecks(), runPocChecks()]);
+  return { sla, pm, implementation, poc };
 }
 
 /** Fire-and-forget variant for read endpoints: never fails the request. */
