@@ -1,7 +1,6 @@
 export async function register() {
-  // On Vercel (serverless) the in-process timer can't run reliably;
-  // reminders are triggered via /api/cron/events instead.
-  if (process.env.NEXT_RUNTIME === "nodejs" && !process.env.VERCEL) {
+  // The always-on Node server runs reminders and SLA / schedule checks every 60 seconds.
+  if (process.env.NEXT_RUNTIME === "nodejs") {
     const g = globalThis as unknown as {
       __virtusSchedulerStarted?: boolean;
       __virtusSchedulerLastBeat?: string;

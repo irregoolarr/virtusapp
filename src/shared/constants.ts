@@ -63,8 +63,8 @@ export const AVAILABILITIES = ["Online", "On Duty", "Away", "Offline"] as const;
 
 export const COMMENT_ENTITY_TYPES = ["corrective", "preventive", "implementation", "poc", "pipeline", "customer"] as const;
 
-/** Max upload size through the app. Vercel rejects request bodies above ~4.5 MB. */
-export const ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;
+/** Max upload size through the app (stored in PostgreSQL, or relayed to Google Drive). */
+export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
 /** Max size for files uploaded directly from the browser to Google Drive. */
 export const ATTACHMENT_MAX_BYTES_DRIVE = 100 * 1024 * 1024;
 /** File types the app will show inline (preview); everything else is download-only. */

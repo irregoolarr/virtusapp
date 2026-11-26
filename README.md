@@ -170,56 +170,91 @@ pnpm db:push      # Run if src/db/schema.ts changed
 
 Then restart the app (`pnpm dev`, or rebuild and restart with `pnpm build && pnpm start` in production). Your `.env.local` configuration and PostgreSQL data are not tracked in git and will remain untouched across `git pull`.
 
-## Deploying to Vercel (Development / Testing)
+## Deploying on Your Own Server (Production)
 
-The repo is Vercel-ready. Vercel builds it from GitHub: every push to `main` updates the **Production** URL, and every other branch or pull request gets its own **Preview** URL for testing fixes.
+VirtusMS runs as one always-on Node.js process (`next start`) next to PostgreSQL. The process also runs the
+background scheduler every 60 seconds (reminder emails, Corrective SLA, Preventive visits, go-live and POC
+review checks), so it must stay running — use a service manager such as systemd.
 
-### 1. Import the GitHub repo
-1. Sign in at [vercel.com](https://vercel.com) with your GitHub account.
-2. **Add New → Project →** import `irregoolarr/virtusapp`. Framework (Next.js), build command and pnpm are detected automatically. Don't deploy yet: add the database first.
-
-### 2. Add a cloud PostgreSQL database
-Vercel can't reach `localhost`. In the project go to **Storage → Create Database → Neon (Postgres)** (free tier) and connect it to the project. This injects `DATABASE_URL` into all environments. Supabase or Railway also work; use their **pooled** connection string with `sslmode=require`.
-
-### 3. Set environment variables
-**Project → Settings → Environment Variables:**
+### 1. Install and configure (once)
+Follow **Prerequisites & Installation** and **Setup** above, then set at least these in `.env.local`:
 
 | Variable | Value |
 |---|---|
-| `DATABASE_URL` | Added by Neon (or paste your pooled URL) |
+| `DATABASE_URL` | Your PostgreSQL database, e.g. `postgresql://virtus:<password>@localhost:5432/virtusapp` |
 | `SESSION_SECRET` | Random string, e.g. `openssl rand -hex 32` |
-| `CRON_SECRET` | Random string, e.g. `openssl rand -hex 32` |
-| `GOOGLE_DRIVE_*` | Optional. Store attachments in Google Drive (see **Attachments & Google Drive**) |
-| `SMTP_*` | Optional. Can also be set later in the app's **Settings** page |
+| `ADMIN_NAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` | The first Super Admin created by `pnpm db:setup` |
+| `COOKIE_SECURE` | Leave unset behind HTTPS. Set `"false"` only if users reach the app over plain HTTP |
+| `SMTP_*`, `GOOGLE_DRIVE_*` | Optional (SMTP can also be set in the app's **Settings** page) |
 
-### 4. Create tables and seed data (once per database)
-Run this from your machine, pointing at the cloud database:
+`drizzle-kit` and the seed/test scripts don't read `.env.local` by themselves — load it into the shell first,
+otherwise they fall back to `localhost:5432` with the default credentials:
 ```bash
-DATABASE_URL="postgresql://...neon.tech/neondb?sslmode=require" \
-ADMIN_EMAIL="you@company.com" ADMIN_PASSWORD="a-strong-password" ADMIN_NAME="Your Name" \
+set -a && . ./.env.local && set +a
+pnpm install
 pnpm db:setup        # = drizzle-kit push + create roles and the first Super Admin
+pnpm build
 ```
 
-To wipe a database and start from zero again (all data is lost — back it up first with `pg_dump`):
+To wipe the database and start from zero again (all data is lost — back it up first with `pg_dump`):
 ```bash
-DATABASE_URL="..." CONFIRM_RESET=yes ADMIN_EMAIL="..." ADMIN_PASSWORD="..." pnpm db:reset
+CONFIRM_RESET=yes pnpm db:reset
 ```
 
-Then click **Deploy** (or **Redeploy**). Open `https://<project>.vercel.app/login`.
+### 2. Run it as a service (starts at boot)
+Example systemd **user** service, `~/.config/systemd/user/virtusapp.service` (adjust the path):
+```ini
+[Unit]
+Description=VirtusMS
+After=network-online.target
 
-### 5. Scheduled reminders on Vercel
-Serverless functions can't keep the 60-second in-process timer alive. On Vercel it's disabled and reminders run through `GET /api/cron/events` (requires `Authorization: Bearer $CRON_SECRET`):
-- **Vercel Cron** (`vercel.json`): daily at 01:00 UTC. This is the Hobby-plan limit; on Pro you can change the schedule to `*/5 * * * *`.
-- **GitHub Actions** (`.github/workflows/reminder-cron.yml`): every 15 minutes. Enable it by adding repo secrets **Settings → Secrets and variables → Actions**: `APP_URL` (e.g. `https://virtusapp.vercel.app`) and `CRON_SECRET` (same value as on Vercel).
-- **Run Due Reminders Now** / **Send Email Now** in the Events page work anytime.
+[Service]
+WorkingDirectory=/home/<user>/virtusapp
+Environment=NODE_ENV=production
+# Behind a reverse proxy, listen on localhost only. next start reads .env.local.
+ExecStart=/home/<user>/virtusapp/node_modules/.bin/next start --hostname 127.0.0.1 --port 3000
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+```bash
+sudo loginctl enable-linger "$USER"          # once: start user services at boot
+systemctl --user daemon-reload
+systemctl --user enable --now virtusapp
+journalctl --user -u virtusapp -f            # logs
+curl -s http://127.0.0.1:3000/api/health     # {"ok":true,"database":"postgresql","schedulerActive":true,...}
+```
+
+### 3. HTTPS
+Put a reverse proxy with a TLS certificate in front of port 3000, for example Caddy:
+```
+vms.example.com {
+    reverse_proxy 127.0.0.1:3000
+}
+```
+With HTTPS in place leave `COOKIE_SECURE` unset, so the session cookie is `Secure`.
+
+### 4. Deploying updates
+```bash
+cd ~/virtusapp && set -a && . ./.env.local && set +a
+git switch main && git pull --ff-only
+pnpm install --frozen-lockfile
+pg_dump "$DATABASE_URL" -Fc -f ~/virtusapp-backups/virtusapp-$(date +%F-%H%M).dump   # before schema changes
+pnpm db:push                                  # only if src/db/schema.ts changed (additive changes apply in place)
+pnpm build
+systemctl --user restart virtusapp
+curl -s http://127.0.0.1:3000/api/health
+```
 
 ### Dev workflow
 ```bash
-git checkout -b fix/my-change    # work locally with pnpm dev
-git push -u origin fix/my-change # Vercel posts a Preview URL on the branch/PR
-# test on the Preview URL → merge to main → Production redeploys automatically
+git checkout -b feature/my-change    # develop with pnpm dev (stop the service first, or use a second clone:
+                                     # both use port 3000 and the .next folder)
+pnpm typecheck && pnpm build && pnpm test
+git switch main && git merge --ff-only feature/my-change && git push origin main
+# then deploy with step 4
 ```
-Tip: give the **Preview** environment its own `DATABASE_URL` (e.g. a Neon branch) so testing never touches production data. Schema changes: re-run `DATABASE_URL=... pnpm db:push` against each cloud database.
 
 ## Architecture
 
@@ -296,7 +331,7 @@ cached for 6 hours, with `open.er-api.com` as a labelled fallback when BI cannot
 Corrective Maintenance tickets accept attachments. Executable/HTML/SVG files are refused, and downloads always go through the app, so access stays permission-checked.
 PDFs, images and text files can be **previewed** in the app (served inline with a locked-down content policy; other types always download).
 
-- **Size limits:** 4 MB per file through the app (Vercel's request limit). With Google Drive connected, larger files (up to 100 MB)
+- **Size limits:** 25 MB per file through the app. With Google Drive connected, larger files (up to 100 MB)
   are uploaded **directly from the browser to Google Drive** using a resumable upload session that the server creates in the ticket's folder; the server then verifies the file before recording it.
 
 - **Without Google Drive configured** files are stored in the database (`attachments.content`). Fine for testing.
@@ -309,8 +344,8 @@ PDFs, images and text files can be **previewed** in the app (served inline with 
 3. **Credentials → Create credentials → OAuth client ID** → *Web application* → authorized redirect URI `https://developers.google.com/oauthplayground`. Copy the client ID and secret.
 4. Open the [OAuth 2.0 Playground](https://developers.google.com/oauthplayground) → ⚙️ → *Use your own OAuth credentials* (paste ID/secret) →
    scope `https://www.googleapis.com/auth/drive.file` → **Authorize APIs** with the Google account that should own the files → **Exchange authorization code for tokens** → copy the **refresh token**.
-5. Set on Vercel (and in `.env.local` for local dev): `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN`
-   (optional `GOOGLE_DRIVE_FOLDER_ID` — only works with the full `drive` scope; with `drive.file` the app creates its own folder). Redeploy.
+5. Set in `.env.local`: `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN`
+   (optional `GOOGLE_DRIVE_FOLDER_ID` — only works with the full `drive` scope; with `drive.file` the app creates its own folder). Restart the service.
 
 The `drive.file` scope only lets the app see files it created — it cannot read the rest of the Drive.
 Files uploaded before Drive was connected stay in the database; new uploads go to Drive.

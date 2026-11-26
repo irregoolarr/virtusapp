@@ -81,7 +81,7 @@ export async function ensureRecordFolder(section: string, recordCode: string): P
 
 /**
  * Start a resumable upload so the browser can send a large file straight to Google
- * (bypassing the ~4.5 MB serverless request limit). `origin` must be the app's origin
+ * (for files above the app's own upload limit). `origin` must be the app's origin
  * so Google returns CORS headers for the browser's PUT.
  */
 export async function createResumableSession(params: {
