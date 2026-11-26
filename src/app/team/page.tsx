@@ -149,6 +149,36 @@ export default function TeamRbacPage() {
     }
   };
 
+  const removeUser = async (u: TeamUserRow | null) => {
+    if (!u) return;
+    const ok = window.confirm(
+      `Delete ${u.name} (${u.email})?\n\nThis cannot be undone. Tickets and records they own or are assigned to are kept, but will show no owner. To keep their history, set Account to Disabled instead.`
+    );
+    if (!ok) return;
+    const res = await fetch(`/api/users/${u.id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      notify(data.error || "Failed to delete team member", "error");
+      return;
+    }
+    notify(`${u.name} deleted`);
+    setUserModalOpen(false);
+    await Promise.all([loadAll(), refreshLookups()]);
+  };
+
+  const removeRole = async (r: RoleRow | null) => {
+    if (!r) return;
+    if (!window.confirm(`Delete the role "${r.name}"?\n\nThis cannot be undone.`)) return;
+    const res = await fetch(`/api/roles/${r.id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      notify(data.error || "Failed to delete role", "error");
+      return;
+    }
+    notify(`Role "${r.name}" deleted`);
+    await loadAll();
+  };
+
   const toggleRolePermission = async (role: RoleRow, permKey: string) => {
     if (!can("rbac:manage")) {
       notify("Only Super Admin can modify RBAC permissions", "error");
@@ -309,6 +339,13 @@ export default function TeamRbacPage() {
             actions={[
               { label: "New", onClick: openCreateUser, hidden: !can("users:manage") },
               { label: "Open", needsSelection: true, onClick: (r) => r && openEditUser(r) },
+              {
+                label: "Delete",
+                tone: "danger",
+                hidden: !can("users:manage"),
+                enabledFor: (r) => r.id !== user?.id,
+                onClick: (r) => void removeUser(r),
+              },
             ]}
             detail={(r) => (
               <DetailList
@@ -340,6 +377,13 @@ export default function TeamRbacPage() {
             actions={[
               { label: "New", onClick: () => setRoleModalOpen(true), hidden: !can("rbac:manage") },
               { label: "Edit Scopes", onClick: () => setTab("scopes") },
+              {
+                label: "Delete",
+                tone: "danger",
+                hidden: !can("rbac:manage"),
+                enabledFor: (r) => !r.isSystem,
+                onClick: (r) => void removeRole(r),
+              },
             ]}
             detail={(r) => (
               <DetailList
@@ -467,6 +511,8 @@ export default function TeamRbacPage() {
         onClose={() => setUserModalOpen(false)}
         title={editingUser ? editingUser.name : "Add Team Member"}
         subtitle={editingUser?.email}
+        canDelete={Boolean(editingUser && can("users:manage") && editingUser.id !== user?.id)}
+        onDelete={() => removeUser(editingUser)}
       >
         <form onSubmit={saveUser} className="space-y-4">
           <FieldLabel label="Full Name" required>

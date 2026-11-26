@@ -76,8 +76,24 @@ export async function updateUser(id: number, d: z.output<typeof userUpdateSchema
 
 export async function deleteUser(id: number, actorId: number): Promise<void> {
   if (id === actorId) throw badRequest("You cannot delete your own active session account");
-  const [deleted] = await db.delete(users).where(eq(users.id, id)).returning({ id: users.id });
-  if (!deleted) throw notFound();
+  const [target] = await db
+    .select({ id: users.id, isActive: users.isActive, roleSlug: roles.slug })
+    .from(users)
+    .innerJoin(roles, eq(users.roleId, roles.id))
+    .where(eq(users.id, id))
+    .limit(1);
+  if (!target) throw notFound();
+  // Never leave the system without an active Super Admin (Service Managers can also delete users).
+  if (target.roleSlug === "super_admin" && target.isActive) {
+    const others = await db
+      .select({ id: users.id })
+      .from(users)
+      .innerJoin(roles, eq(users.roleId, roles.id))
+      .where(and(eq(roles.slug, "super_admin"), eq(users.isActive, true), ne(users.id, id)))
+      .limit(1);
+    if (others.length === 0) throw new ApiError(409, "This is the last active Super Admin and cannot be deleted");
+  }
+  await db.delete(users).where(eq(users.id, id));
 }
 
 // ---- Self-service profile --------------------------------------------------

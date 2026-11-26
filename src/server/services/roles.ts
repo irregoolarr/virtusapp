@@ -1,7 +1,7 @@
 import { asc, eq, sql } from "drizzle-orm";
 import { db, roles, users } from "@/db";
 import { PERMISSIONS } from "@/lib/rbac";
-import { badRequest, notFound, serialize } from "@/server/http";
+import { ApiError, badRequest, notFound, serialize } from "@/server/http";
 import type { RolesResponse } from "@/shared/types";
 import { roleCreateSchema } from "@/shared/schemas";
 import type { z } from "zod";
@@ -71,5 +71,16 @@ export async function deleteRole(id: number): Promise<void> {
   const [existing] = await db.select().from(roles).where(eq(roles.id, id)).limit(1);
   if (!existing) throw notFound();
   if (existing.isSystem) throw badRequest("System default roles cannot be deleted");
+  // users.role_id has no ON DELETE rule, so a role in use would fail with a database error.
+  const [{ members }] = await db
+    .select({ members: sql<number>`count(*)::int` })
+    .from(users)
+    .where(eq(users.roleId, id));
+  if (members > 0) {
+    throw new ApiError(
+      409,
+      `${members} member${members === 1 ? "" : "s"} still ${members === 1 ? "has" : "have"} the role "${existing.name}". Move them to another role first.`
+    );
+  }
   await db.delete(roles).where(eq(roles.id, id));
 }
