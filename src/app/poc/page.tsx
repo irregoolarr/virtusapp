@@ -17,6 +17,7 @@ import { cn, formatDateTime, formatShortDate } from "@/lib/utils";
 import { POC_DUE_SOON_DAYS, POC_STAGES, isPocFinished } from "@/shared/constants";
 import { deadlineInfo, type DeadlineState } from "@/shared/deadline";
 import type { PocItem } from "@/shared/types";
+import { useOpenFromLink } from "@/components/useOpenFromLink";
 
 type Row = PocItem;
 
@@ -175,6 +176,9 @@ export default function PocPage() {
     });
     setModalOpen(true);
   };
+
+  // Deep link from the notification bell: <page>?open=<id> opens that record.
+  useOpenFromLink(items, openEdit);
 
   const refreshAll = () => Promise.all([loadItems(), refreshLookups()]);
   const decided = Boolean(editing && isPocFinished(editing.outcome));

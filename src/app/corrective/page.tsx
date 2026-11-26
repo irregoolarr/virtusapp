@@ -25,6 +25,7 @@ import {
 } from "@/shared/constants";
 import { defaultSlaDue, slaInfo, type SlaState } from "@/shared/sla";
 import type { CorrectiveItem } from "@/shared/types";
+import { useOpenFromLink } from "@/components/useOpenFromLink";
 
 type CorrectiveRow = CorrectiveItem;
 
@@ -208,6 +209,9 @@ export default function CorrectivePage() {
     });
     setModalOpen(true);
   };
+
+  // Deep link from the notification bell: <page>?open=<id> opens that record.
+  useOpenFromLink(items, openEdit);
 
   const refreshAll = () => Promise.all([loadItems(), refreshLookups()]);
 

@@ -24,6 +24,7 @@ import {
 } from "@/shared/constants";
 import { nextVisitDate, pmScheduleInfo, type PmScheduleState } from "@/shared/pm";
 import type { ChecklistItem, PreventiveItem } from "@/shared/types";
+import { useOpenFromLink } from "@/components/useOpenFromLink";
 
 type PreventiveRow = PreventiveItem;
 
@@ -216,6 +217,9 @@ export default function PreventivePage() {
     });
     setModalOpen(true);
   };
+
+  // Deep link from the notification bell: <page>?open=<id> opens that record.
+  useOpenFromLink(items, openEdit);
 
   const refreshAll = () => Promise.all([loadItems(), refreshLookups()]);
   const completed = Boolean(editing && editing.status === "Completed");

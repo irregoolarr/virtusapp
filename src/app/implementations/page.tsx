@@ -17,6 +17,7 @@ import { formatDateTime, formatShortDate } from "@/lib/utils";
 import { IMPLEMENTATION_STAGES, IMPLEMENTATION_TYPES, IMPL_DUE_SOON_DAYS } from "@/shared/constants";
 import { deadlineInfo, type DeadlineState } from "@/shared/deadline";
 import type { ImplementationItem, MilestoneItem } from "@/shared/types";
+import { useOpenFromLink } from "@/components/useOpenFromLink";
 
 type Row = ImplementationItem;
 
@@ -188,6 +189,9 @@ export default function ImplementationsPage() {
     });
     setModalOpen(true);
   };
+
+  // Deep link from the notification bell: <page>?open=<id> opens that record.
+  useOpenFromLink(items, openEdit);
 
   const refreshAll = () => Promise.all([loadItems(), refreshLookups()]);
   const live = Boolean(editing && editing.status === "Go-Live");

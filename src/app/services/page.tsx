@@ -13,6 +13,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/ToastProvider";
 import { cn, formatCurrency, formatShortDate } from "@/lib/utils";
 import type { ServiceItem } from "@/shared/types";
+import { useOpenFromLink } from "@/components/useOpenFromLink";
 
 type ServiceRow = ServiceItem;
 
@@ -121,6 +122,9 @@ export default function ServicesPage() {
     });
     setModalOpen(true);
   };
+
+  // Deep link from the notification bell: <page>?open=<id> opens that record.
+  useOpenFromLink(items, openEdit);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -165,3 +165,26 @@ export interface ExchangeRateInfo {
   source: string;
   official: boolean;
 }
+
+/** One item in the top-bar notification bell (GET /api/notifications). */
+export interface NotificationItem {
+  /** Stable key, e.g. "corrective-12". */
+  id: string;
+  module: "corrective" | "preventive" | "implementation" | "poc" | "service";
+  /** critical = breached / overdue; warning = at risk / due soon / expiring. */
+  level: "critical" | "warning";
+  /** Record code, e.g. "CM-2026-001". */
+  code: string;
+  title: string;
+  /** Countdown label, e.g. "Breached 2h ago", "Due today", "Contract ends in 12d". */
+  status: string;
+  customerName: string | null;
+  /** Page path that opens the record: `${path}?open=${recordId}`. */
+  path: string;
+  recordId: number;
+}
+
+export interface NotificationsResponse {
+  items: NotificationItem[];
+  counts: { critical: number; warning: number };
+}

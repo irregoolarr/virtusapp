@@ -6,7 +6,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
-  Bell,
   BellRing,
   Building2,
   CalendarCheck2,
@@ -28,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "./AuthProvider";
+import { NotificationBell } from "./NotificationBell";
 import { cn, getInitials } from "@/lib/utils";
 
 interface NavItem {
@@ -174,8 +174,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       );
     });
 
-  const eventsBadge = lookups?.badges.events ?? 0;
-
   return (
     <div className="min-h-screen bg-[#F5F7FA] text-[#0F172A]">
       {/* Top bar */}
@@ -211,16 +209,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Users className="w-5 h-5" />
             </Link>
           )}
-          {can("events:read") && (
-            <Link href="/events" title={`${eventsBadge} scheduled reminders`} className="relative flex w-10 h-10 rounded-sm items-center justify-center text-[#4B5563] hover:bg-[#EEF1F4] hover:text-[#1668AC]">
-              <Bell className="w-5 h-5" />
-              {eventsBadge > 0 && (
-                <span className="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[#FF2224] text-[10px] font-semibold leading-4 text-center tabular-nums text-white">
-                  {eventsBadge}
-                </span>
-              )}
-            </Link>
-          )}
+          {(can("maintenance:read") || can("delivery:read") || can("services:read")) && <NotificationBell />}
 
           <div className="relative ml-1" ref={menuRef}>
             <button
