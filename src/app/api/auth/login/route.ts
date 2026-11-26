@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE_NAME } from "@/lib/auth";
+import { SESSION_COOKIE_NAME, sessionCookieSecure } from "@/lib/auth";
 import { ApiError } from "@/server/http";
 import { signIn } from "@/server/services/auth";
 import { loginSchema } from "@/shared/schemas";
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       sameSite: "lax",
       path: "/",
       expires: session.expiresAt,
-      secure: process.env.NODE_ENV === "production",
+      secure: sessionCookieSecure(),
     });
     return response;
   } catch (err) {

@@ -6,6 +6,13 @@ import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 
+/** Page to return to after signing in (set when a session expired); only same-site paths. */
+function returnPath(): string {
+  const next = new URLSearchParams(window.location.search).get("next") ?? "";
+  // Same-site paths only: "//host" and "/\\host" would leave the site.
+  return /^\/(?![\/\\])/.test(next) && !next.startsWith("/login") ? next : "/";
+}
+
 export default function LoginPage() {
   const { user, refreshAuth } = useAuth();
   const router = useRouter();
@@ -19,7 +26,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (user) {
-      router.replace("/");
+      router.replace(returnPath());
     }
   }, [user, router]);
 
@@ -38,7 +45,7 @@ export default function LoginPage() {
         return;
       }
       await refreshAuth();
-      router.replace("/");
+      router.replace(returnPath());
     } catch {
       setError("Network error while signing in");
     } finally {

@@ -8,6 +8,17 @@ import { hasPermission, PermissionKey } from "./rbac";
 export const SESSION_COOKIE_NAME = "virtus_session";
 const SESSION_TTL_DAYS = 7;
 
+/**
+ * Whether the session cookie gets the `Secure` flag. Defaults to on in production.
+ * Set COOKIE_SECURE="false" only for a self-hosted server reached over plain HTTP
+ * (e.g. http://<lan-ip>:3000), where browsers would otherwise drop the cookie.
+ */
+export function sessionCookieSecure(): boolean {
+  const override = process.env.COOKIE_SECURE?.trim().toLowerCase();
+  if (override === "true" || override === "false") return override === "true";
+  return process.env.NODE_ENV === "production";
+}
+
 export interface AuthenticatedUser {
   id: number;
   name: string;
