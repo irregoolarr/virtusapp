@@ -228,6 +228,10 @@ export const commentCreateSchema = z.object({
   body: z.string().min(1).max(2000),
 });
 
+export const commentUpdateSchema = z.object({
+  body: z.string().trim().min(1, "Comment can't be empty").max(2000),
+});
+
 export const settingsUpdateSchema = z.object({
   smtp: z
     .object({

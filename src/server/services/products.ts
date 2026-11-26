@@ -4,6 +4,7 @@ import { notFound, serialize } from "@/server/http";
 import type { ProductItem } from "@/shared/types";
 import { productCreateSchema } from "@/shared/schemas";
 import type { z } from "zod";
+import { moveToRecycleBin } from "./recycleBin";
 
 type CreateInput = z.output<typeof productCreateSchema>;
 
@@ -50,7 +51,7 @@ export async function updateProduct(id: number, d: Partial<CreateInput>) {
   return serialize(updated);
 }
 
-export async function deleteProduct(id: number): Promise<void> {
-  const [deleted] = await db.delete(products).where(eq(products.id, id)).returning();
-  if (!deleted) throw notFound();
+/** Moves the record to the Recycle Bin (restorable for RECYCLE_BIN_DAYS). */
+export async function deleteProduct(id: number, actorId: number | null = null): Promise<void> {
+  await moveToRecycleBin("product", id, actorId);
 }

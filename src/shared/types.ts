@@ -136,6 +136,8 @@ export interface CommentItem {
   authorName: string | null;
   authorJobTitle: string | null;
   authorAvatarColor: string | null;
+  /** Set when the author edited the comment. */
+  updatedAt: string | null;
 }
 
 /** Dropdown data + sidebar badge counts loaded once per session. */
@@ -187,4 +189,26 @@ export interface NotificationItem {
 export interface NotificationsResponse {
   items: NotificationItem[];
   counts: { critical: number; warning: number };
+}
+
+/** One entry in the Recycle Bin (GET /api/recycle-bin). */
+export interface RecycleBinItem {
+  id: number;
+  /** Module key, e.g. "corrective", "customer". */
+  module: string;
+  moduleLabel: string;
+  entityId: number;
+  code: string;
+  title: string;
+  /** Rows deleted along with it, e.g. "+ 2 service numbers". */
+  includes: string | null;
+  deletedAt: string;
+  deletedByName: string | null;
+  /** When the entry is purged automatically. */
+  purgeAt: string;
+}
+
+export interface RecycleBinResponse {
+  items: RecycleBinItem[];
+  retentionDays: number;
 }

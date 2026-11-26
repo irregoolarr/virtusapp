@@ -130,3 +130,6 @@ export const POC_DECISIONS = ["Success", "Extended", "Dropped"] as const;
 export const isPocFinished = (outcome: string) => outcome === "Success" || outcome === "Dropped";
 /** Lead is reminded this many days before the review date. */
 export const POC_DUE_SOON_DAYS = 3;
+
+/** Deleted records stay in the Recycle Bin this long, then are purged for good. */
+export const RECYCLE_BIN_DAYS = 30;

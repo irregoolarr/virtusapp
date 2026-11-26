@@ -57,6 +57,7 @@ test("All UI routes return HTTP 200", async () => {
     "/reports",
     "/team",
     "/settings",
+    "/recycle-bin",
   ];
   for (const route of routes) {
     const res = await fetch(`${BASE_URL}${route}`);
@@ -505,8 +506,18 @@ test("Corrective: resolution detail, activity history, attachments", async () =>
   const attDel = await api(`/api/attachments/${attId}`, { method: "DELETE" }, adminCookie);
   assert.equal(attDel.status, 200);
 
+  // Delete moves the ticket to the Recycle Bin: its history is kept until it is purged.
   const cleanup = await api(`/api/maintenance/corrective/${id}`, { method: "DELETE" }, adminCookie);
   assert.equal(cleanup.status, 200);
+  const kept = await api(`/api/activities?entityType=corrective&entityId=${id}`, {}, adminCookie);
+  assert.ok((kept.json as { items: unknown[] }).items.length > 0, "history kept while in the Recycle Bin");
+  const bin = await api("/api/recycle-bin", {}, adminCookie);
+  const entry = (bin.json as { items: Array<{ id: number; module: string; entityId: number }> }).items.find(
+    (e) => e.module === "corrective" && e.entityId === id
+  );
+  assert.ok(entry, "ticket is in the Recycle Bin");
+  const purge = await api(`/api/recycle-bin/${entry.id}`, { method: "DELETE" }, adminCookie);
+  assert.equal(purge.status, 200);
   const after = await api(`/api/activities?entityType=corrective&entityId=${id}`, {}, adminCookie);
   assert.equal((after.json as { items: unknown[] }).items.length, 0);
 });

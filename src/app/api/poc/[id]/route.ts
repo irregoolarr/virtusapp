@@ -7,7 +7,7 @@ export const PATCH = route("delivery:write", async ({ req, params, user }) => {
   return { item: await updatePoc(idParam(params), input, user.id) };
 });
 
-export const DELETE = route("delivery:delete", async ({ params }) => {
-  await deletePoc(idParam(params));
+export const DELETE = route("delivery:delete", async ({ params, user }) => {
+  await deletePoc(idParam(params), user.id);
   return { ok: true };
 });

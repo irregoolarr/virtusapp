@@ -18,9 +18,9 @@ import {
   nextFormattedCode,
   nextSequence,
   parseDateOrNull,
-  removeRecordArtifacts,
   userContact,
 } from "./common";
+import { moveToRecycleBin } from "./recycleBin";
 
 type CreateInput = z.output<typeof preventiveCreateSchema>;
 type UpdateInput = Partial<CreateInput>;
@@ -212,10 +212,9 @@ async function recordChanges(before: PmRow, after: PmRow, actorId: number) {
   }
 }
 
-export async function deletePreventive(id: number): Promise<void> {
-  const [deleted] = await db.delete(preventiveMaintenances).where(eq(preventiveMaintenances.id, id)).returning();
-  if (!deleted) throw notFound();
-  await removeRecordArtifacts(ENTITY, id);
+/** Moves the record to the Recycle Bin (restorable for RECYCLE_BIN_DAYS). */
+export async function deletePreventive(id: number, actorId: number | null = null): Promise<void> {
+  await moveToRecycleBin("preventive", id, actorId);
 }
 
 // ---- Lifecycle: Complete (+ schedule next visit) ------------------------------------

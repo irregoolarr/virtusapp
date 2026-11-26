@@ -16,9 +16,9 @@ import {
   nextFormattedCode,
   nextSequence,
   parseDateOrNull,
-  removeRecordArtifacts,
   userContact,
 } from "./common";
+import { moveToRecycleBin } from "./recycleBin";
 
 type CreateInput = z.output<typeof implementationCreateSchema>;
 type UpdateInput = Partial<CreateInput>;
@@ -202,10 +202,9 @@ async function recordChanges(before: ImplRow, after: ImplRow, actorId: number) {
   }
 }
 
-export async function deleteImplementation(id: number): Promise<void> {
-  const [deleted] = await db.delete(implementations).where(eq(implementations.id, id)).returning();
-  if (!deleted) throw notFound();
-  await removeRecordArtifacts(ENTITY, id);
+/** Moves the record to the Recycle Bin (restorable for RECYCLE_BIN_DAYS). */
+export async function deleteImplementation(id: number, actorId: number | null = null): Promise<void> {
+  await moveToRecycleBin("implementation", id, actorId);
 }
 
 // ---- Go-Live -------------------------------------------------------------------

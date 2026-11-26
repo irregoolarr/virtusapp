@@ -7,7 +7,7 @@ export const PATCH = route("events:write", async ({ req, params }) => {
   return { item: await updateEvent(idParam(params), input) };
 });
 
-export const DELETE = route("events:delete", async ({ params }) => {
-  await deleteEvent(idParam(params));
+export const DELETE = route("events:delete", async ({ params, user }) => {
+  await deleteEvent(idParam(params), user.id);
   return { ok: true };
 });

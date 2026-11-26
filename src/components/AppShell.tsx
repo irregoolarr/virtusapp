@@ -19,6 +19,7 @@ import {
   Menu,
   Package,
   Settings,
+  Trash2,
   TrendingUp,
   UserCircle,
   UserCog,
@@ -36,6 +37,8 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   badge?: number;
   permission?: string;
+  /** Shown when the user has any of these permissions. */
+  anyPermission?: string[];
 }
 
 interface NavSection {
@@ -120,6 +123,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       items: [
         { label: "User Management", href: "/team", icon: UserCog, permission: "users:read" },
         { label: "Settings", href: "/settings", icon: Settings, permission: "settings:manage" },
+        {
+          label: "Recycle Bin",
+          href: "/recycle-bin",
+          icon: Trash2,
+          anyPermission: [
+            "maintenance:delete",
+            "delivery:delete",
+            "pipeline:delete",
+            "customers:delete",
+            "services:delete",
+            "products:delete",
+            "events:delete",
+          ],
+        },
       ],
     },
   ];
@@ -128,7 +145,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const renderNav = (compact: boolean) =>
     sections.map((section, si) => {
-      const items = section.items.filter((item) => !item.permission || can(item.permission));
+      const items = section.items.filter(
+        (item) => (!item.permission || can(item.permission)) && (!item.anyPermission || item.anyPermission.some(can))
+      );
       if (items.length === 0) return null;
       return (
         <div key={si} className={si > 0 ? "mt-6" : ""}>

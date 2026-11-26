@@ -7,7 +7,7 @@ export const PATCH = route("pipeline:write", async ({ req, params }) => {
   return { item: await updateDeal(idParam(params), input) };
 });
 
-export const DELETE = route("pipeline:delete", async ({ params }) => {
-  await deleteDeal(idParam(params));
+export const DELETE = route("pipeline:delete", async ({ params, user }) => {
+  await deleteDeal(idParam(params), user.id);
   return { ok: true };
 });

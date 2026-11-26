@@ -5,6 +5,7 @@ import type { ServiceItem } from "@/shared/types";
 import { serviceCreateSchema } from "@/shared/schemas";
 import type { z } from "zod";
 import { parseDateOrNull } from "./common";
+import { moveToRecycleBin } from "./recycleBin";
 
 type CreateInput = z.output<typeof serviceCreateSchema>;
 
@@ -81,7 +82,7 @@ export async function updateServiceNumber(id: number, d: Partial<CreateInput>) {
   return serialize(updated);
 }
 
-export async function deleteServiceNumber(id: number): Promise<void> {
-  const [deleted] = await db.delete(serviceNumbers).where(eq(serviceNumbers.id, id)).returning();
-  if (!deleted) throw notFound();
+/** Moves the record to the Recycle Bin (restorable for RECYCLE_BIN_DAYS). */
+export async function deleteServiceNumber(id: number, actorId: number | null = null): Promise<void> {
+  await moveToRecycleBin("service", id, actorId);
 }

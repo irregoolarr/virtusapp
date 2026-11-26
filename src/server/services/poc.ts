@@ -15,9 +15,9 @@ import {
   nextFormattedCode,
   nextSequence,
   parseDateOrNull,
-  removeRecordArtifacts,
   userContact,
 } from "./common";
+import { moveToRecycleBin } from "./recycleBin";
 
 type CreateInput = z.output<typeof pocCreateSchema>;
 type UpdateInput = Partial<CreateInput>;
@@ -161,10 +161,9 @@ export async function updatePoc(id: number, d: UpdateInput, actorId: number) {
   return serialize(after);
 }
 
-export async function deletePoc(id: number): Promise<void> {
-  const [deleted] = await db.delete(pocRecords).where(eq(pocRecords.id, id)).returning();
-  if (!deleted) throw notFound();
-  await removeRecordArtifacts(ENTITY, id);
+/** Moves the record to the Recycle Bin (restorable for RECYCLE_BIN_DAYS). */
+export async function deletePoc(id: number, actorId: number | null = null): Promise<void> {
+  await moveToRecycleBin("poc", id, actorId);
 }
 
 // ---- Decide: Success (→ Approved, optional pipeline deal) / Extended / Dropped -----

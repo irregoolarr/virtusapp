@@ -5,6 +5,7 @@ import type { PipelineItem } from "@/shared/types";
 import { pipelineCreateSchema } from "@/shared/schemas";
 import type { z } from "zod";
 import { getCommentCounts, nextFormattedCode, nextSequence, parseDateOrNull } from "./common";
+import { moveToRecycleBin } from "./recycleBin";
 
 type CreateInput = z.output<typeof pipelineCreateSchema>;
 type UpdateInput = Partial<CreateInput>;
@@ -79,7 +80,7 @@ export async function updateDeal(id: number, d: UpdateInput) {
   return serialize(updated);
 }
 
-export async function deleteDeal(id: number): Promise<void> {
-  const [deleted] = await db.delete(pipelineDeals).where(eq(pipelineDeals.id, id)).returning();
-  if (!deleted) throw notFound();
+/** Moves the record to the Recycle Bin (restorable for RECYCLE_BIN_DAYS). */
+export async function deleteDeal(id: number, actorId: number | null = null): Promise<void> {
+  await moveToRecycleBin("pipeline", id, actorId);
 }

@@ -7,7 +7,7 @@ export const PATCH = route("maintenance:write", async ({ req, params, user }) =>
   return { item: await updatePreventive(idParam(params), input, user.id) };
 });
 
-export const DELETE = route("maintenance:delete", async ({ params }) => {
-  await deletePreventive(idParam(params));
+export const DELETE = route("maintenance:delete", async ({ params, user }) => {
+  await deletePreventive(idParam(params), user.id);
   return { ok: true };
 });

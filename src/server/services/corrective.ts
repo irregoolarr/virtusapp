@@ -25,10 +25,10 @@ import {
   nextFormattedCode,
   nextSequence,
   parseDateOrNull,
-  removeRecordArtifacts,
   userContact,
 } from "./common";
 import { getOpsPreferences } from "./settings";
+import { moveToRecycleBin } from "./recycleBin";
 
 type CreateInput = z.output<typeof correctiveCreateSchema>;
 type UpdateInput = Partial<CreateInput>;
@@ -239,10 +239,9 @@ async function recordChanges(before: CorrectiveRow, after: CorrectiveRow, actorI
   }
 }
 
-export async function deleteCorrective(id: number): Promise<void> {
-  const [deleted] = await db.delete(correctiveMaintenances).where(eq(correctiveMaintenances.id, id)).returning();
-  if (!deleted) throw notFound();
-  await removeRecordArtifacts(ENTITY, id);
+/** Moves the record to the Recycle Bin (restorable for RECYCLE_BIN_DAYS). */
+export async function deleteCorrective(id: number, actorId: number | null = null): Promise<void> {
+  await moveToRecycleBin("corrective", id, actorId);
 }
 
 // ---- Lifecycle actions: Resolve → Close, or Reopen ---------------------------------

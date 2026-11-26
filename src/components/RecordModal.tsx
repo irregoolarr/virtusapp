@@ -3,12 +3,16 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Send, Trash2, X } from "lucide-react";
 import { Dialog, TextButton } from "@/components/Dialog";
+import { useAuth } from "@/components/AuthProvider";
+import { useToast } from "@/components/ToastProvider";
 import { cn, formatDateTime, getInitials } from "@/lib/utils";
 
 interface CommentRow {
   id: number;
   body: string;
   createdAt: string;
+  updatedAt: string | null;
+  authorId: number | null;
   authorName: string | null;
   authorJobTitle: string | null;
   authorAvatarColor: string | null;
@@ -85,6 +89,11 @@ export function RecordModal({
   };
   const [commentText, setCommentText] = useState("");
   const [sendingComment, setSendingComment] = useState(false);
+  const { user } = useAuth();
+  const { notify } = useToast();
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     if (!open || !entityType || !entityId) {
@@ -98,6 +107,43 @@ export function RecordModal({
   }, [open, entityType, entityId]);
 
   if (!open) return null;
+
+  const startEdit = (c: CommentRow) => {
+    setEditingCommentId(c.id);
+    setEditText(c.body);
+  };
+
+  const saveEdit = async (id: number) => {
+    if (!editText.trim()) return;
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/comments/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: editText.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        notify(data.error || "Failed to update comment", "error");
+        return;
+      }
+      setComments((prev) => prev.map((c) => (c.id === id ? data.comment : c)));
+      setEditingCommentId(null);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const removeComment = async (id: number) => {
+    if (!window.confirm("Delete this comment? This cannot be undone.")) return;
+    const res = await fetch(`/api/comments/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      notify(data.error || "Failed to delete comment", "error");
+      return;
+    }
+    setComments((prev) => prev.filter((c) => c.id !== id));
+  };
 
   const submitComment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -224,9 +270,59 @@ export function RecordModal({
                         </div>
                         <span className="text-[11px] text-[#6B7280]">
                           {formatDateTime(c.createdAt)}
+                          {c.updatedAt && <span title={`Edited ${formatDateTime(c.updatedAt)}`}> · edited</span>}
                         </span>
                       </div>
-                      <p className="text-[12.5px] text-[#374151] leading-relaxed">{c.body}</p>
+                      {editingCommentId === c.id ? (
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={editText}
+                            maxLength={2000}
+                            onChange={(e) => setEditText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                void saveEdit(c.id);
+                              } else if (e.key === "Escape") {
+                                // Cancel the edit only; don't close the record window.
+                                e.preventDefault();
+                                setEditingCommentId(null);
+                              }
+                            }}
+                            aria-label="Edit comment"
+                            className="flex-1 rounded-sm border border-[#C9D0D7] bg-white px-2.5 py-1.5 text-[12.5px] focus:outline-none focus:border-[#1668AC]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void saveEdit(c.id)}
+                            disabled={savingEdit || !editText.trim()}
+                            className="px-3 py-1.5 rounded-sm bg-[#1668AC] text-white text-[12px] font-medium disabled:opacity-40"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingCommentId(null)}
+                            className="px-2.5 py-1.5 rounded-sm text-[12px] text-[#4B5563] hover:bg-black/5"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-[12.5px] text-[#374151] leading-relaxed">{c.body}</p>
+                      )}
+                      {user && c.authorId === user.id && editingCommentId !== c.id && (
+                        <div className="mt-1.5 flex gap-3 text-[11.5px]">
+                          <button type="button" onClick={() => startEdit(c)} className="text-[#1668AC] hover:underline">
+                            Edit
+                          </button>
+                          <button type="button" onClick={() => void removeComment(c.id)} className="text-[#DC2626] hover:underline">
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))
                 )}

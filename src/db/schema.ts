@@ -316,6 +316,8 @@ export const entityComments = pgTable("entity_comments", {
   authorId: integer("author_id").references(() => users.id, { onDelete: "set null" }),
   body: text("body").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  /** Set when the author edits the comment (shown as "edited"). */
+  updatedAt: timestamp("updated_at"),
 });
 
 export const appSettings = pgTable("app_settings", {
@@ -364,4 +366,28 @@ export const attachments = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [index("attachments_entity_idx").on(t.entityType, t.entityId)]
+);
+
+/**
+ * Recycle Bin: a deleted record (plus rows its delete cascaded to) saved as exact JSON
+ * copies, so it can be restored with the same id and code. Its Activity History,
+ * attachments and notes stay in place until the entry is purged.
+ */
+export const deletedRecords = pgTable(
+  "deleted_records",
+  {
+    id: serial("id").primaryKey(),
+    /** Module key, e.g. "corrective", "customer" (see src/server/services/recycleBin.ts). */
+    entityType: varchar("entity_type", { length: 32 }).notNull(),
+    entityId: integer("entity_id").notNull(),
+    code: varchar("code", { length: 80 }).notNull(),
+    title: text("title").notNull(),
+    /** e.g. "+ 2 service numbers" when the delete cascaded. */
+    includes: text("includes"),
+    /** { rows: [{ table, row }], relinks: [{ table, column, ids, value }] } */
+    payload: jsonb("payload").notNull(),
+    deletedById: integer("deleted_by_id").references(() => users.id, { onDelete: "set null" }),
+    deletedAt: timestamp("deleted_at").notNull().defaultNow(),
+  },
+  (t) => [index("deleted_records_entity_idx").on(t.entityType, t.entityId)]
 );

@@ -7,6 +7,7 @@ import type { z } from "zod";
 import { sendAlertEmail } from "@/lib/mailer";
 import { computeNextRunDate } from "@/lib/utils";
 import { nextFormattedCode, nextSequence, parseDateOrNull } from "./common";
+import { moveToRecycleBin } from "./recycleBin";
 
 type CreateInput = z.output<typeof eventCreateSchema>;
 
@@ -79,9 +80,9 @@ export async function updateEvent(id: number, d: Partial<CreateInput>) {
   return serialize(updated);
 }
 
-export async function deleteEvent(id: number): Promise<void> {
-  const [deleted] = await db.delete(events).where(eq(events.id, id)).returning();
-  if (!deleted) throw notFound();
+/** Moves the record to the Recycle Bin (restorable for RECYCLE_BIN_DAYS). */
+export async function deleteEvent(id: number, actorId: number | null = null): Promise<void> {
+  await moveToRecycleBin("event", id, actorId);
 }
 
 /** Send one event's alert immediately and roll its schedule forward. */

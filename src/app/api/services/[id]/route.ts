@@ -7,7 +7,7 @@ export const PATCH = route("services:write", async ({ req, params }) => {
   return { item: await updateServiceNumber(idParam(params), input) };
 });
 
-export const DELETE = route("services:delete", async ({ params }) => {
-  await deleteServiceNumber(idParam(params));
+export const DELETE = route("services:delete", async ({ params, user }) => {
+  await deleteServiceNumber(idParam(params), user.id);
   return { ok: true };
 });

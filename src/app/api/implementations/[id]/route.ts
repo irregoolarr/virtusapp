@@ -7,7 +7,7 @@ export const PATCH = route("delivery:write", async ({ req, params, user }) => {
   return { item: await updateImplementation(idParam(params), input, user.id) };
 });
 
-export const DELETE = route("delivery:delete", async ({ params }) => {
-  await deleteImplementation(idParam(params));
+export const DELETE = route("delivery:delete", async ({ params, user }) => {
+  await deleteImplementation(idParam(params), user.id);
   return { ok: true };
 });

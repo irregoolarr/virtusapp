@@ -5,6 +5,7 @@ import type { CustomerItem, PartnerItem } from "@/shared/types";
 import { customerCreateSchema, partnerCreateSchema } from "@/shared/schemas";
 import type { z } from "zod";
 import { getCommentCounts, nextSequence } from "./common";
+import { moveToRecycleBin } from "./recycleBin";
 
 type CustomerInput = z.output<typeof customerCreateSchema>;
 type PartnerInput = z.output<typeof partnerCreateSchema>;
@@ -63,9 +64,9 @@ export async function updateCustomer(id: number, d: Partial<CustomerInput>) {
   return serialize(updated);
 }
 
-export async function deleteCustomer(id: number): Promise<void> {
-  const [deleted] = await db.delete(customers).where(eq(customers.id, id)).returning();
-  if (!deleted) throw notFound();
+/** Moves the record to the Recycle Bin (restorable for RECYCLE_BIN_DAYS). */
+export async function deleteCustomer(id: number, actorId: number | null = null): Promise<void> {
+  await moveToRecycleBin("customer", id, actorId);
 }
 
 // ---- Business partners -----------------------------------------------------
@@ -108,7 +109,7 @@ export async function updatePartner(id: number, d: Partial<PartnerInput>) {
   return serialize(updated);
 }
 
-export async function deletePartner(id: number): Promise<void> {
-  const [deleted] = await db.delete(businessPartners).where(eq(businessPartners.id, id)).returning();
-  if (!deleted) throw notFound();
+/** Moves the record to the Recycle Bin (restorable for RECYCLE_BIN_DAYS). */
+export async function deletePartner(id: number, actorId: number | null = null): Promise<void> {
+  await moveToRecycleBin("partner", id, actorId);
 }
